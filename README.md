@@ -81,6 +81,9 @@ ColorOS 的 `com.oplus.battery` 会在 Google 连通性探测失败时调用系�
 ColorOS 17 的系统框架据此降级 GMS 闹钟并把 Google 应用放入 RARE 待机分组。本模块只把该广播中的
 `restrict_enable=true` 改为 `false`，名单更新照常下发。
 
+ColorOS 17 的“流量管理”会隐藏这几个 Google 包的联网开关，用户无法手动修改。它们的实际状态和恢复方法见
+[流量管理里没有 Google 入口](docs/report-issue.md#流量管理里没有-google-入口)。
+
 ## 它不能解决什么
 
 - 目标应用本身不使用 FCM；

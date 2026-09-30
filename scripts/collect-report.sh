@@ -5,7 +5,6 @@
 OUT="/sdcard/Download/${1:-fcmfix-report.txt}"
 GMS=com.google.android.gms
 MODULE=io.github.artifical0.fcmfix.coloros
-GMS_UID=$(pm list packages -U "$GMS" | grep "^package:$GMS " | grep -o 'uid:[0-9]*' | cut -d: -f2)
 
 section() { echo; echo "== $1"; }
 
@@ -21,9 +20,21 @@ section() { echo; echo "== $1"; }
   section "模块版本"
   dumpsys package "$MODULE" | grep -m1 versionName || echo "未安装 $MODULE"
 
-  section "GMS 联网策略（无输出表示 POLICY_NONE，出现 REJECT_ALL 表示 GMS 被禁止联网）"
-  echo "gms uid=$GMS_UID"
-  [ -n "$GMS_UID" ] && dumpsys netpolicy | grep -E "UID=$GMS_UID( |$)"
+  # ColorOS keeps these in its own networking_control service (/data/oplus/common/networkingcontrolpolicy.xml),
+  # not in AOSP netpolicy. Transaction 2 is getUidPolicy(uid).
+  section "Google 核心包联网策略（0 不限制，1 禁移动数据，2 禁 Wi-Fi，4 全部禁止）"
+  for p in com.google.android.gms com.google.android.gsf com.android.vending com.google.android.configupdater; do
+    uid=$(pm list packages -U "$p" | grep "^package:$p " | grep -o 'uid:[0-9]*' | cut -d: -f2)
+    if [ -z "$uid" ]; then echo "$p 未安装"; continue; fi
+    raw=$(service call networking_control 2 i32 "$uid" 2>&1)
+    hex=$(echo "$raw" | sed -n 's/.*Parcel(\([0-9a-f]*\) \([0-9a-f]*\).*/\1 \2/p')
+    if [ "${hex%% *}" = "00000000" ]; then
+      echo "$p uid=$uid policy=$(printf '%d' "0x${hex##* }")"
+    else
+      echo "$p uid=$uid policy=查询失败: $raw"
+    fi
+  done
+  echo "oplus_user_change_gms_network_control=$(settings get global oplus_user_change_gms_network_control)"
 
   section "GMS 待机分组（10/20/30 正常，40 为 RARE 受限）"
   am get-standby-bucket "$GMS"

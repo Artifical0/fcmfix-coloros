@@ -72,7 +72,7 @@ GMS 被设为禁止联网时，开代理也没有网；闹钟降级、待机分�
 
 用下文脚本导出报告，确认：
 
-- “GMS 联网策略”一栏没有 `REJECT_ALL`；
+- “Google 核心包联网策略”中 GMS 为 `policy=0`；
 - GMS 待机分组不是 `40`；
 - 日志中有 `Oplus Battery Google restrict broadcast hooks active` 和 `Oplus Google alarm restriction hook active`，
   没有 `hook error`。
@@ -81,6 +81,38 @@ GMS 被设为禁止联网时，开代理也没有网；闹钟降级、待机分�
 请附上报告和断开时间点提交 Issue。
 
 最直接的验证：连一个确定可用的网络，熄屏放置半小时。在该网络下不断开，而在原网络下断开，就是原网络的问题。
+
+## 流量管理里没有 Google 入口
+
+ColorOS 17 国行的“流量管理”会**隐藏** Google Play 服务、Google 服务框架和 Play 商店的 WLAN / 移动数据开关，
+也拒绝用户修改它们。这三个包的联网由电池组件（`com.oplus.battery`）自动管理：探测 Google 失败时设为“全部禁止”，
+成功时解除。这是系统设计，不是故障。
+
+FCMFix 的电池作用域会把这次“全部禁止”改为“不限制”。电池组件每次开机都会重新设置一遍，所以勾选电池作用域并重启后，
+通常会自动恢复。
+
+这些策略保存在 ColorOS 自己的联网控制服务（`/data/oplus/common/networkingcontrolpolicy.xml`）中，
+**不在** Android 的 `dumpsys netpolicy` 里。请用 [`collect-report.sh`](../scripts/collect-report.sh) 查看
+“Google 核心包联网策略”一栏，或用 Root 执行：
+
+```sh
+su -c 'service call networking_control 2 i32 $(pm list packages -U com.google.android.gms | grep "^package:com.google.android.gms " | grep -o "uid:[0-9]*" | cut -d: -f2)'
+```
+
+输出 `Parcel(00000000 00000000 ...)` 表示不限制，`Parcel(00000000 00000004 ...)` 表示全部禁止。
+
+### 勾选电池作用域并重启后仍是 4
+
+如果系统记录了“用户手动改过”这些包（例如在旧版系统的流量管理里改过），电池组件会一直跳过它们，旧的禁止状态就会保留下来，
+而 ColorOS 17 的界面又不允许修改。报告中 `oplus_user_change_gms_network_control` 不为 `0` 时就是这种情况。
+清除该标记并重启，电池组件会重新接管，FCMFix 随即把策略改为不限制：
+
+```sh
+su -c 'settings put global oplus_user_change_gms_network_control 0'
+```
+
+重启后再次查看，GMS 应为 `policy=0`。该标记只被电池组件用来判断是否跳过这几个包；清除后，
+这些包的联网完全交由系统自动管理（在 FCMFix 下即不限制）。
 
 ## 2. 导出报告（需要 Root）
 
@@ -116,7 +148,7 @@ GMS 被设为禁止联网时，开代理也没有网；闹钟降级、待机分�
 
 | 报告内容 | 含义 |
 | --- | --- |
-| “GMS 联网策略”下出现 `REJECT_ALL` | GMS 被禁止联网。通常是电池作用域未生效（没勾选，或勾选后没有重启） |
+| “Google 核心包联网策略”中 GMS 为 `policy=4`（或 1、2） | GMS 被禁止全部（或部分）联网，见下文“流量管理里没有 Google 入口” |
 | 待机分组为 `40`，或 `google_restric_info` 为 `1` 但日志中没有 `restrict broadcast cleared` | ColorOS 17 的 Google 限制未被解除，需要 53-coloros-10-rc2 或更新版本 |
 | 日志中有 `hook error` 或 `Unsupported` | 某个 Hook 与当前固件不匹配，请在 Issue 中贴出这些行 |
 | 以上均正常，但 FCM Diagnostics 一直 disconnected | 网络问题（DNS 污染或端口被封），见上文国内网络说明 |
