@@ -40,6 +40,8 @@ public class OplusProxyFix extends XposedModule {
             "com.android.server.hans.device.OplusHansConnectivityManager";
     private static final String OPLUS_MALICIOUS_RESTRICT_POLICY =
             "com.android.server.am.MaliciousRestrictPolicy";
+    private static final String OPLUS_HANS_MANAGER =
+            "com.android.server.am.OplusHansManager";
     private static final String OPLUS_LINK_START_MANAGER =
             "com.android.server.am.OplusLinkStartManager";
     private static final String TYPE_BIND_SERVICE_FROM_GCM = "bsgcm";
@@ -94,6 +96,40 @@ public class OplusProxyFix extends XposedModule {
         runHook("malicious broadcast check", this::startHookMaliciousBroadcast);
         runHook("malicious service check", this::startHookMaliciousService);
         runHook("link-start broadcast check", this::startHookLinkStartBroadcast);
+        runHook("Hans job FCM window", this::startHookHansJobWindow);
+    }
+
+    /**
+     * Apps such as Gmail react to an FCM tickle by scheduling a sync/WorkManager job, which Hans
+     * blocks for background apps. Only the UID inside its FCM delivery window is exempted.
+     * Generalized from a Gmail-only fork change by @Tlipoca1337.
+     */
+    private void startHookHansJobWindow() {
+        Class<?> hansClass = XposedHelpers.findClassIfExists(OPLUS_HANS_MANAGER, classLoader);
+        if (hansClass == null) throw new NoClassDefFoundError(OPLUS_HANS_MANAGER);
+
+        int hooks = 0;
+        for (Method method : hansClass.getDeclaredMethods()) {
+            Class<?>[] types = method.getParameterTypes();
+            if (!"checkJobIfRestricted".equals(method.getName()) || !isBooleanType(method.getReturnType())
+                    || types.length < 2 || types[0] != int.class) {
+                continue;
+            }
+            XposedBridge.hookMethod(method, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    int uid = (Integer) param.args[0];
+                    if (isInFcmDeliveryWindow(uid)) {
+                        printLog("Oplus FCM job-restriction bypass: pkg="
+                                + getFcmDeliveryPackage(uid) + ", uid=" + uid, true);
+                        param.setResult(false);
+                    }
+                }
+            });
+            hooks++;
+            printLog("Oplus Hans job FCM-window hook active: " + describeMethod(method));
+        }
+        if (hooks == 0) throw new NoSuchMethodError("OplusHansManager#checkJobIfRestricted");
     }
 
     private interface TargetResolver {

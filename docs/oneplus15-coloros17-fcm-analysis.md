@@ -76,6 +76,7 @@
 | 云控恶意应用名单 | `MaliciousRestrictPolicy.shouldPreventBroadcastByMaliciousCheck` / `shouldPreventServiceByMaliciousCheck`，可按包整体限制 | FCM 广播、GMS GCM 绑定、应用绑定自身 `FirebaseMessagingService` 被拦 | 广播按 `BroadcastRecord` 核验；服务仅放行真实 `ProcessRecord` 为 GMS 或投递窗口内目标自身的调用 |
 | 关联启动限制 | `OplusLinkStartManager.handleProcessBroadcastStartLocked`（默认开启，阈值 5 级，云控可调） | GMS 作为拉起方级别过高时后续冷启动被拦 | 可信 FCM 放行 |
 | 深度睡眠断网 | `Battery.apk` `com.oplus.deepsleep.ControllerCenter`：白名单含 `com.heytap.mcs`、VoWiFi、P2P、IM，不含 GMS | 夜间深度睡眠时 FCM 断开 | `addPkgWhiteArray` / `addUidWhiteArray` 追加 GMS UID |
+| Hans 作业限制 | `OplusHansManager.checkJobIfRestricted`：后台受限应用的作业被拦截 | FCM 通知后需要同步作业拉取内容的应用（如 Gmail）延迟 | 投递窗口内的 UID 不拦截（参考 fork @Tlipoca1337 的 Gmail 放行） |
 | 深度睡眠闹钟延后 | `OplusDeepSleepHelper.filterDeepSleepAlarm` / `ruleMatchDeepSleepAlarm` | 匹配规则的闹钟等待网络恢复 | GMS/GSF 闹钟不延后 |
 
 ### 核查后无需处理
@@ -91,3 +92,13 @@
 - 系统应用冻结判定明确排除 GMS 名单；未发现 Hans 冻结 GMS 本身的路径，但 ELSA `whitePkg` / `hansKeepAlive` 在 ColorOS 17 中的作用未逐项证明。
 
 深度睡眠结束亮屏时，电池组件在“逻辑断网”后会主动结束 GMS 进程以促使重连，本版未改动该行为。
+
+### 社区 fork 对照（53-coloros-11-rc2）
+
+- @Tlipoca1337：Gmail 同步作业放行（已推广为投递窗口内作业放行）、HyperOS `AutoStartManagerServiceStubImpl` 空 component 防护（已合并）；
+  配置加载前禁止修改允许列表、deoptimize（已在上游）；UnifiedPush action（与“仅信任真实 GMS 发送者”的模型冲突，未合并）。
+- @ligensuo711：PHK110 的 `shouldPreventStartProcess` 放行（ColorOS 17 上该方法只拦截伪造的进程记录哨兵，放行会让伪造记录继续启动，未合并）；
+  `checkReceiverIfRestricted`（ColorOS 17 上无实现，恒不拦截）；`isAllowStartService` 无条件放行（范围过宽，且只在目标冻结时调用）；
+  `skipScheduleReceiver*` 整体放行（已由各道带来源核验的放行覆盖）；投递窗口 60 秒（未采纳，保留 20 秒）。
+- @zopulus：独立发现深度睡眠白名单（本仓库实现覆盖两种断网模式）；Ice Box 同步激活（与不阻塞广播线程的设计相反，未合并）；
+  其余为包名与界面重写。

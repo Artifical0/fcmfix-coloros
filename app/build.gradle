@@ -8,8 +8,8 @@ android {
         applicationId "io.github.artifical0.fcmfix.coloros"
         minSdkVersion 29
         targetSdkVersion 34
-        versionCode 65
-        versionName "53-coloros-11-rc1"
+        versionCode 66
+        versionName "53-coloros-11-rc2"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
