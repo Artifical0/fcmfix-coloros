@@ -21,6 +21,9 @@ public class OplusBatteryNetworkFix extends XposedModule {
             "android.net.OplusNetworkingControlManager";
     private static final String GOOGLE_RESTRICT_CHANGE = "oplus.intent.action.google_restrict_change";
     private static final String EXTRA_RESTRICT_ENABLE = "restrict_enable";
+    private static final String USER_CHANGE_GMS_NETWORK_CONTROL = "oplus_user_change_gms_network_control";
+    private static final String IGNORE_GMS_USER_SET = "IgnoreGmsUserSet";
+    private static final String BATTERY_PACKAGE = "com.oplus.battery";
     private static final int POLICY_REJECT_ALL = 4;
     private static final int POLICY_NONE = 0;
     private static final String[] GOOGLE_NETWORK_PACKAGES = new String[]{
@@ -44,6 +47,65 @@ public class OplusBatteryNetworkFix extends XposedModule {
             printLog("hook error Oplus Battery Google restrict broadcast: "
                     + e.getClass().getSimpleName() + ": " + e.getMessage());
         }
+        try {
+            startHookIgnoredUserChange();
+        } catch (Throwable e) {
+            printLog("hook error Oplus Battery GMS user-change flag: "
+                    + e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * GoogleRestrictionController skips packages flagged in oplus_user_change_gms_network_control,
+     * so a stale reject-all from an older UI survives every boot. When the battery APK declares
+     * IgnoreGmsUserSet=true (ColorOS 17), Traffic Monitor hides these toggles and refuses user
+     * changes, so the flag can no longer reflect a user choice. Only then report it as unset,
+     * letting the controller rewrite the policy (which the hook above turns into POLICY_NONE).
+     */
+    private void startHookIgnoredUserChange() {
+        Class<?> global = XposedHelpers.findClass("android.provider.Settings$Global", classLoader);
+        int hooks = 0;
+        for (Method method : global.getDeclaredMethods()) {
+            Class<?>[] parameters = method.getParameterTypes();
+            if (!"getInt".equals(method.getName()) || parameters.length < 2
+                    || parameters[1] != String.class) {
+                continue;
+            }
+            XposedBridge.hookMethod(method, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (!USER_CHANGE_GMS_NETWORK_CONTROL.equals(param.args[1])
+                            || !batteryIgnoresGmsUserSet()) {
+                        return;
+                    }
+                    param.setResult(0);
+                    logOnce("Oplus Battery ignores stale GMS user-change flag (IgnoreGmsUserSet)");
+                }
+            });
+            hooks++;
+        }
+        if (hooks == 0) throw new NoSuchMethodError("Settings.Global#getInt(ContentResolver,String...)");
+        printLog("Oplus Battery GMS user-change hooks active: " + hooks);
+    }
+
+    private static volatile Boolean ignoresGmsUserSet;
+
+    private static boolean batteryIgnoresGmsUserSet() {
+        Boolean cached = ignoresGmsUserSet;
+        if (cached != null) return cached;
+        if (context == null) return false;
+        boolean ignores = false;
+        try {
+            android.os.Bundle metaData = context.getPackageManager()
+                    .getApplicationInfo(BATTERY_PACKAGE, PackageManager.GET_META_DATA).metaData;
+            Object value = metaData == null ? null : metaData.get(IGNORE_GMS_USER_SET);
+            // Traffic Monitor compares the value's string form with "true".
+            ignores = value != null && "true".equals(value.toString());
+        } catch (Throwable e) {
+            printLog("Cannot read " + IGNORE_GMS_USER_SET + ": " + e.getMessage());
+        }
+        ignoresGmsUserSet = ignores;
+        return ignores;
     }
 
     /**

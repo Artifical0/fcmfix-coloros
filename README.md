@@ -81,7 +81,10 @@ ColorOS 的 `com.oplus.battery` 会在 Google 连通性探测失败时调用系�
 ColorOS 17 的系统框架据此降级 GMS 闹钟并把 Google 应用放入 RARE 待机分组。本模块只把该广播中的
 `restrict_enable=true` 改为 `false`，名单更新照常下发。
 
-ColorOS 17 的“流量管理”会隐藏这几个 Google 包的联网开关，用户无法手动修改。它们的实际状态和恢复方法见
+ColorOS 17 的“流量管理”会隐藏这几个 Google 包的联网开关（电池组件声明了 `IgnoreGmsUserSet=true`），用户无法手动修改。
+此时电池组件会因旧的“用户改过”标记（`oplus_user_change_gms_network_control`）一直跳过这些包，旧的禁止状态保留下来。
+本模块仅在电池组件自己声明忽略用户设置时，才在电池进程中把该标记视为未设置，让电池组件重新接管，再按上文改为不限制；
+仍开放这些开关的系统（如 ColorOS 16）不受影响。详见
 [流量管理里没有 Google 入口](docs/report-issue.md#流量管理里没有-google-入口)。
 
 ## 它不能解决什么

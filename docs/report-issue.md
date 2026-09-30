@@ -105,14 +105,19 @@ su -c 'service call networking_control 2 i32 $(pm list packages -U com.google.an
 
 如果系统记录了“用户手动改过”这些包（例如在旧版系统的流量管理里改过），电池组件会一直跳过它们，旧的禁止状态就会保留下来，
 而 ColorOS 17 的界面又不允许修改。报告中 `oplus_user_change_gms_network_control` 不为 `0` 时就是这种情况。
-清除该标记并重启，电池组件会重新接管，FCMFix 随即把策略改为不限制：
+
+FCMFix 53-coloros-11 起会自动处理：电池组件自己声明了 `IgnoreGmsUserSet=true`（ColorOS 17 即如此，此时流量管理隐藏这些开关）时，
+电池进程读取该标记一律视为 `0`，电池组件每次开机重新接管这几个包，FCMFix 再把策略改为不限制。
+日志中会出现 `Oplus Battery ignores stale GMS user-change flag`。流量管理仍开放这些开关的系统（如 ColorOS 16）不受影响，
+继续尊重用户的设置。
+
+旧版本或自动处理未生效时，可以手动清除该标记并重启：
 
 ```sh
 su -c 'settings put global oplus_user_change_gms_network_control 0'
 ```
 
-重启后再次查看，GMS 应为 `policy=0`。该标记只被电池组件用来判断是否跳过这几个包；清除后，
-这些包的联网完全交由系统自动管理（在 FCMFix 下即不限制）。
+重启后再次查看，GMS 应为 `policy=0`。
 
 ## 2. 导出报告（需要 Root）
 
