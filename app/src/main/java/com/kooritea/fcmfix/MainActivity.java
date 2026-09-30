@@ -12,6 +12,8 @@ import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Handler;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -20,7 +22,9 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.RadioGroup;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -76,6 +80,7 @@ public class MainActivity extends AppCompatActivity {
                     xposedService = service;
                     runOnUiThread(() -> {
                         loadConfigFromRemotePreferences();
+                        updateModuleStatus();
                     });
                 }
 
@@ -84,6 +89,7 @@ public class MainActivity extends AppCompatActivity {
                     if (xposedService == service) {
                         xposedService = null;
                     }
+                    runOnUiThread(MainActivity.this::updateModuleStatus);
                 }
             });
         } catch (Throwable e) {
@@ -127,12 +133,53 @@ public class MainActivity extends AppCompatActivity {
             this.configLoaded = true;
             if (appListAdapter != null) {
                 appListAdapter.syncAllowList();
-                appListAdapter.notifyDataSetChanged();
+                appListAdapter.applyFilter();
             }
             invalidateOptionsMenu();
         } catch (Throwable e) {
             this.configLoaded = false;
             Log.e("loadRemoteConfig", e.toString());
+        }
+    }
+
+    /**
+     * Show whether LSPosed has bound the module service and which recommended scopes are
+     * missing. A bound service means the module is enabled; hooks still need a reboot after
+     * enabling it or changing its scope.
+     */
+    private void updateModuleStatus() {
+        TextView status = findViewById(R.id.module_status);
+        if (status == null) return;
+        XposedService service = xposedService;
+        if (service == null) {
+            status.setText("模块状态：未激活，请在 LSPosed 中启用模块并重启手机");
+            status.setTextColor(ContextCompat.getColor(this, R.color.statusWarning));
+            return;
+        }
+        StringBuilder text = new StringBuilder("模块状态：已激活");
+        try {
+            text.append(" · ").append(service.getFrameworkName()).append(' ')
+                    .append(service.getFrameworkVersion()).append(" · API ").append(service.getApiVersion());
+        } catch (Throwable e) {
+            Log.w("updateModuleStatus", e.toString());
+        }
+        List<String> missing = new ArrayList<>();
+        try {
+            List<String> scope = service.getScope();
+            if (scope != null) {
+                if (!scope.contains("system") && !scope.contains("android")) missing.add("系统框架");
+                if (!scope.contains("com.oplus.battery")) missing.add("电池");
+            }
+        } catch (Throwable e) {
+            Log.w("updateModuleStatus", e.toString());
+        }
+        if (missing.isEmpty()) {
+            status.setText(text);
+            status.setTextColor(ContextCompat.getColor(this, R.color.statusOk));
+        } else {
+            text.append("\n缺少作用域：").append(String.join("、", missing)).append("，勾选后重启手机");
+            status.setText(text);
+            status.setTextColor(ContextCompat.getColor(this, R.color.statusWarning));
         }
     }
 
@@ -152,7 +199,12 @@ public class MainActivity extends AppCompatActivity {
 
     private class AppListAdapter  extends RecyclerView.Adapter<AppListAdapter.ViewHolder> {
 
-        private final List<AppInfo> mAppList;
+        /** Every installed app; "select all" and allow-list sync always use this list. */
+        private final List<AppInfo> mAllApps;
+        /** The apps currently shown after search and filter. */
+        private final List<AppInfo> mAppList = new ArrayList<>();
+        private String mQuery = "";
+        private int mFilterId = R.id.filter_all;
         class ViewHolder extends RecyclerView.ViewHolder {
             View appView;
             ImageView icon;
@@ -228,7 +280,8 @@ public class MainActivity extends AppCompatActivity {
             _notFoundFcm.sort(sortName);
             _allowList.addAll(_notAllowList);
             _allowList.addAll(_notFoundFcm);
-            this.mAppList = _allowList;
+            this.mAllApps = _allowList;
+            this.mAppList.addAll(_allowList);
             if(_allowList.size() == 0 || _allowList.isEmpty() ||(_allowList.size() == 1 && getPackageName().equals(_allowList.get(0).packageName))){
                 new AlertDialog.Builder(MainActivity.this)
                         .setTitle("请在系统设置中授予读取应用列表权限")
@@ -239,9 +292,32 @@ public class MainActivity extends AppCompatActivity {
         }
 
         private void syncAllowList() {
-            for (AppInfo appInfo : mAppList) {
+            for (AppInfo appInfo : mAllApps) {
                 appInfo.isAllow = allowList.contains(appInfo.packageName);
             }
+        }
+
+        @SuppressLint("NotifyDataSetChanged")
+        private void setFilter(String query, int filterId) {
+            mQuery = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+            mFilterId = filterId;
+            applyFilter();
+        }
+
+        @SuppressLint("NotifyDataSetChanged")
+        private void applyFilter() {
+            mAppList.clear();
+            for (AppInfo appInfo : mAllApps) {
+                if (mFilterId == R.id.filter_fcm && !appInfo.includeFcm) continue;
+                if (mFilterId == R.id.filter_allowed && !appInfo.isAllow) continue;
+                if (!mQuery.isEmpty() && !appInfo.name.toLowerCase(Locale.ROOT).contains(mQuery)
+                        && !appInfo.packageName.toLowerCase(Locale.ROOT).contains(mQuery)) {
+                    continue;
+                }
+                mAppList.add(appInfo);
+            }
+            notifyDataSetChanged();
+            findViewById(R.id.empty_view).setVisibility(mAppList.isEmpty() ? View.VISIBLE : View.GONE);
         }
 
 
@@ -269,7 +345,8 @@ public class MainActivity extends AppCompatActivity {
                 }
                 if (updated) {
                     appInfo.isAllow = !appInfo.isAllow;
-                    appListAdapter.notifyDataSetChanged();
+                    // Re-filter so an app unchecked under "已允许" leaves that view.
+                    appListAdapter.applyFilter();
                 }
             });
             return holder;
@@ -306,6 +383,12 @@ public class MainActivity extends AppCompatActivity {
         // Load immediately instead of waiting for a second bind callback that may never arrive.
         if (xposedService != null) {
             loadConfigFromRemotePreferences();
+            updateModuleStatus();
+        } else {
+            // The bind callback may take a moment; report "inactive" only if it never arrives.
+            new Handler().postDelayed(() -> {
+                if (xposedService == null) updateModuleStatus();
+            }, 3000);
         }
 
         try {
@@ -320,8 +403,30 @@ public class MainActivity extends AppCompatActivity {
             recyclerView.setAdapter(appListAdapter);
             findViewById(R.id.progress_bar).setVisibility(View.GONE);
             recyclerView.setVisibility(View.VISIBLE);
+            initFilterBar();
             invalidateOptionsMenu();
         }, 1000);
+    }
+
+    private void initFilterBar() {
+        EditText search = findViewById(R.id.search_input);
+        RadioGroup filter = findViewById(R.id.filter_group);
+        search.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (appListAdapter != null) {
+                    appListAdapter.setFilter(s.toString(), filter.getCheckedRadioButtonId());
+                }
+            }
+        });
+        filter.setOnCheckedChangeListener((group, checkedId) -> {
+            if (appListAdapter != null) {
+                appListAdapter.setFilter(search.getText().toString(), checkedId);
+            }
+        });
+        findViewById(R.id.filter_bar).setVisibility(View.VISIBLE);
     }
 
     @Nullable
@@ -435,14 +540,14 @@ public class MainActivity extends AppCompatActivity {
             if("全选包含 FCM 的应用".equals(item.getTitle())){
                 item.setOnMenuItemClickListener(menuItem -> {
                     Set<String> previousAllowList = new HashSet<>(allowList);
-                    for(AppInfo appInfo : appListAdapter.mAppList){
+                    for(AppInfo appInfo : appListAdapter.mAllApps){
                         if(appInfo.includeFcm){
                             allowList.add(appInfo.packageName);
                         }
                     }
                     if (updateConfig()) {
                         appListAdapter.syncAllowList();
-                        appListAdapter.notifyDataSetChanged();
+                        appListAdapter.applyFilter();
                     } else {
                         allowList.clear();
                         allowList.addAll(previousAllowList);

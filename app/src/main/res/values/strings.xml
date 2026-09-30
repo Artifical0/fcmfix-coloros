@@ -5,4 +5,10 @@
     <string name="screen_description">勾选需要由 FCM 唤醒的应用</string>
     <string name="screen_scope">LSPosed 作用域：系统框架 + 电池</string>
     <string name="contains_fcm">包含 FCM</string>
+    <string name="status_connecting">模块状态：正在连接 LSPosed…</string>
+    <string name="search_hint">搜索应用名称或包名</string>
+    <string name="filter_all">全部</string>
+    <string name="filter_fcm">包含 FCM</string>
+    <string name="filter_allowed">已允许</string>
+    <string name="empty_list">没有匹配的应用</string>
 </resources>

@@ -6,6 +6,9 @@
 
 - **FCM 后的后台作业**：Hans 会拦截后台受限应用的作业。收到 FCM 后需要调度同步作业拉取内容的应用（如 Gmail、使用
   WorkManager 的应用）因此延迟。现在投递窗口内的应用作业不再被拦截。参考 @Tlipoca1337 fork 中的 Gmail 放行，推广到所有允许列表应用。
+- **界面**：标题下方显示模块激活状态、LSPosed 框架版本和 API 版本，并提示缺少的作用域（系统框架、电池）；
+  应用列表新增搜索（名称或包名）和“全部 / 包含 FCM / 已允许”筛选。参考 @zopulus fork 的界面功能，在原有界面上实现，
+  未引入新依赖。
 - **HyperOS 空指针防护**：`AutoStartManagerServiceStubImpl` 遇到没有 component 的 Intent 时不再出错（来自 @Tlipoca1337）。
 
 rc1 的全部内容见 [53-coloros-11-rc1](53-coloros-11-rc1.md)。各 fork 改动的评估见

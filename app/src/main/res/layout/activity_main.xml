@@ -52,7 +52,76 @@
                 android:text="@string/screen_scope"
                 android:textColor="@color/colorPrimary"
                 android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/module_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/status_connecting"
+                android:textColor="@color/textSecondary"
+                android:textSize="12sp" />
         </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/filter_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="12dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="12dp"
+        android:visibility="gone">
+
+        <EditText
+            android:id="@+id/search_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:autofillHints=""
+            android:background="@drawable/bg_app_item"
+            android:hint="@string/search_hint"
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:minHeight="44dp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:singleLine="true"
+            android:textColor="@color/textPrimary"
+            android:textColorHint="@color/textSecondary"
+            android:textSize="14sp" />
+
+        <RadioGroup
+            android:id="@+id/filter_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:checkedButton="@+id/filter_all"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/filter_all"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="12dp"
+                android:text="@string/filter_all"
+                android:textColor="@color/textPrimary" />
+
+            <RadioButton
+                android:id="@+id/filter_fcm"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="12dp"
+                android:text="@string/filter_fcm"
+                android:textColor="@color/textPrimary" />
+
+            <RadioButton
+                android:id="@+id/filter_allowed"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/filter_allowed"
+                android:textColor="@color/textPrimary" />
+        </RadioGroup>
     </LinearLayout>
 
     <FrameLayout
@@ -74,6 +143,16 @@
             android:clipToPadding="false"
             android:paddingTop="6dp"
             android:paddingBottom="10dp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/empty_view"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="@string/empty_list"
+            android:textColor="@color/textSecondary"
+            android:textSize="14sp"
             android:visibility="gone" />
     </FrameLayout>
 
