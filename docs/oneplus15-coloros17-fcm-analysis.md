@@ -59,3 +59,35 @@
   - `OplusNetworkPolicyManagerServiceEx.matchGoogleRestrictRule`：受 `getGoogleRestrictSwitch()` 约束，模块已将其置为 false。
 - 处理：在电池进程拦截该广播，只把 `restrict_enable=true` 改为 `false`；system_server 中 `isGoogleRestrct()`
   返回 `false` 作为兜底（全固件仅闹钟限制调用）。
+
+## 全面限制核查（53-coloros-11）
+
+参照旧 Magisk 模块 `coloros_gms_extreme_fix`（ELSA 补丁、Doze 白名单、`google_restric_info`、iptables Google 规则），
+对 `oplus-services.jar`、`oplus-service-jobscheduler.jar`、`OplusExSystemService.apk`、`Battery.apk` 中涉及 GMS、
+广播冷启动和服务启动的限制逐项核对。
+
+### 新增处理
+
+| 限制 | 位置 | 影响 | 处理 |
+| --- | --- | --- | --- |
+| GMS 受限状态被直接读取 | `OplusBgSceneManager.isGmsRestricted()`：`OplusProxyWakeLock.acquireWLFilterGms`（丢弃 GMS/GSF partial wakelock）、`SysAppCtrlPolicy`（OGuard 耗电管控）、`restrictFgAssWakeupForGmsApp`（前台应用唤醒 GMS） | 受限时 GMS 无法持有唤醒锁、应用向 GMS 注册 token 受限 | getter 恒为 `false` |
+| 弱信号防火墙 | `OplusHansConnectivityManager.setWeakSignalUidFireWallChain`：熄屏弱信号时对 Doze 白名单中的第三方与 GMS 名单应用设置防火墙链 9 拒绝；`OplusHansRestriction.isBlockedAlarmPolicy` 同场景拦截闹钟 | 弱信号熄屏时 GMS 断网 | `isWeakSignalNetWhiteList` 对 GMS/GSF/Play 返回 `true` |
+| 冷启动拦截 | `OplusAppStartupManager.validStartProcessFromBroadcast`：持久限制名单、`restrictStartupBg` 时的限制名单且无进程 | FCM 无法拉起无进程的应用 | 按 `BroadcastRecord` 核验可信 FCM 后放行 |
+| 云控恶意应用名单 | `MaliciousRestrictPolicy.shouldPreventBroadcastByMaliciousCheck` / `shouldPreventServiceByMaliciousCheck`，可按包整体限制 | FCM 广播、GMS GCM 绑定、应用绑定自身 `FirebaseMessagingService` 被拦 | 广播按 `BroadcastRecord` 核验；服务仅放行真实 `ProcessRecord` 为 GMS 或投递窗口内目标自身的调用 |
+| 关联启动限制 | `OplusLinkStartManager.handleProcessBroadcastStartLocked`（默认开启，阈值 5 级，云控可调） | GMS 作为拉起方级别过高时后续冷启动被拦 | 可信 FCM 放行 |
+| 深度睡眠断网 | `Battery.apk` `com.oplus.deepsleep.ControllerCenter`：白名单含 `com.heytap.mcs`、VoWiFi、P2P、IM，不含 GMS | 夜间深度睡眠时 FCM 断开 | `addPkgWhiteArray` / `addUidWhiteArray` 追加 GMS UID |
+| 深度睡眠闹钟延后 | `OplusDeepSleepHelper.filterDeepSleepAlarm` / `ruleMatchDeepSleepAlarm` | 匹配规则的闹钟等待网络恢复 | GMS/GSF 闹钟不延后 |
+
+### 核查后无需处理
+
+- `OplusPartialWakeLockCheck.FORCE_RELEASE_LIST` 含 GMS，但只处理熄屏后持有超过阈值（默认 300 秒）的唤醒锁，FCM 心跳与收消息的唤醒锁仅数秒。
+- `OplusAppStartTracker` 启动配额：`isInvalidRecord` 仅对 Oplus 自研应用生效。
+- Hans 服务代理 `isProxyService`：仅作用于处于代理状态（冻结）的 UID，投递窗口内目标不会被冻结。
+- `OplusResourcePreloadManager.preloadServiceBlock`：仅针对系统预加载的进程。
+- `OplusAppStartupConfig.isInSysLongDelayList`（国行加入 GMS 名单）：本固件无调用方。
+- `OplusPermissionInterceptPolicy`（GMS 在跳过名单）、`OplusEapManager`（崩溃上报）、Hans GMS 定位代理：与推送无关。
+- 防火墙：Oplus 按 UID 拒绝联网的来源只有联网控制服务（`networking_control`，电池作用域已处理）与弱信号防火墙（本版处理）；
+  `fw_INPUT` / `fw_OUTPUT` 为 AOSP 链，`oplus_dns`、`zte_fw_gms` 链在本固件中不存在。
+- 系统应用冻结判定明确排除 GMS 名单；未发现 Hans 冻结 GMS 本身的路径，但 ELSA `whitePkg` / `hansKeepAlive` 在 ColorOS 17 中的作用未逐项证明。
+
+深度睡眠结束亮屏时，电池组件在“逻辑断网”后会主动结束 GMS 进程以促使重连，本版未改动该行为。

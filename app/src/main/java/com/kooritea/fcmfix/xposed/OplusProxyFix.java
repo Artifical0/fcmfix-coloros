@@ -10,6 +10,7 @@ import android.util.Pair;
 import com.kooritea.fcmfix.libxposed.XC_MethodHook;
 import com.kooritea.fcmfix.libxposed.XposedBridge;
 import com.kooritea.fcmfix.libxposed.XposedHelpers;
+import com.kooritea.fcmfix.util.FcmTrust;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -33,6 +34,14 @@ public class OplusProxyFix extends XposedModule {
             "com.android.server.hans.freeze.HansCGroup";
     private static final String OPLUS_BROADCAST_PROXY_ACTION =
             "com.android.server.am.BroadcastProxyAction";
+    private static final String OPLUS_BG_SCENE_MANAGER =
+            "com.android.server.hans.scene.OplusBgSceneManager";
+    private static final String OPLUS_HANS_CONNECTIVITY_MANAGER =
+            "com.android.server.hans.device.OplusHansConnectivityManager";
+    private static final String OPLUS_MALICIOUS_RESTRICT_POLICY =
+            "com.android.server.am.MaliciousRestrictPolicy";
+    private static final String OPLUS_LINK_START_MANAGER =
+            "com.android.server.am.OplusLinkStartManager";
     private static final String TYPE_BIND_SERVICE_FROM_GCM = "bsgcm";
     private static final String START_PROCESS_FROM_GCM_BIND_SERVICE = "system[gcm]";
     private static final long FCM_DELIVERY_WINDOW_MS = 20_000L;
@@ -79,6 +88,194 @@ public class OplusProxyFix extends XposedModule {
         runHook("HansSceneManager FCM window", this::startHookHansFcmWindow);
         runHook("HansCGroup FCM window", this::startHookHansCGroupFcmWindow);
         runHook("CpnProxy broadcast", this::startHookCpnProxyBroadcast);
+        runHook("isGmsRestricted", this::startHookIsGmsRestricted);
+        runHook("weak-signal net whitelist", this::startHookWeakSignalNetWhiteList);
+        runHook("validStartProcessFromBroadcast", this::startHookValidStartFromBroadcast);
+        runHook("malicious broadcast check", this::startHookMaliciousBroadcast);
+        runHook("malicious service check", this::startHookMaliciousService);
+        runHook("link-start broadcast check", this::startHookLinkStartBroadcast);
+    }
+
+    private interface TargetResolver {
+        String resolve(Object[] args);
+    }
+
+    /**
+     * Cold-start gates on the queued broadcast path. Each receives the BroadcastRecord, so
+     * trustedDelivery verifies the real GMS sender, the exact RECEIVE action and the
+     * allowlisted explicit target before the gate is told not to block.
+     */
+    private int hookTrustedBroadcastGate(String className, String methodName, Object allowResult,
+                                         TargetResolver resolver) {
+        Class<?> clazz = XposedHelpers.findClassIfExists(className, classLoader);
+        if (clazz == null) throw new NoClassDefFoundError(className);
+        int hooks = 0;
+        for (Method method : clazz.getDeclaredMethods()) {
+            if (!methodName.equals(method.getName()) || !isBooleanType(method.getReturnType())) continue;
+            boolean hasRecord = false;
+            for (Class<?> type : method.getParameterTypes()) {
+                if ("com.android.server.am.BroadcastRecord".equals(type.getName())) hasRecord = true;
+            }
+            if (!hasRecord) continue;
+            XposedBridge.hookMethod(method, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    Intent intent = findIntentArgument(param.args);
+                    if (intent == null || !FcmTrust.RECEIVE.equals(intent.getAction())) return;
+                    String target;
+                    try {
+                        target = resolver.resolve(param.args);
+                    } catch (Throwable e) {
+                        return;
+                    }
+                    if (trustedDelivery(intent, target, param)) {
+                        printLog("Oplus " + methodName + " bypass: pkg=" + target, true);
+                        param.setResult(allowResult);
+                    }
+                }
+            });
+            hooks++;
+            printLog("Oplus broadcast gate hook active: " + describeMethod(method));
+        }
+        if (hooks == 0) throw new NoSuchMethodError(className + "#" + methodName);
+        return hooks;
+    }
+
+    private static String receiverPackage(Object[] args) {
+        for (Object arg : args) {
+            if (arg instanceof android.content.pm.ResolveInfo) {
+                android.content.pm.ResolveInfo info = (android.content.pm.ResolveInfo) arg;
+                return info.activityInfo == null ? null : info.activityInfo.packageName;
+            }
+            if (arg != null && "com.android.server.am.BroadcastFilter".equals(arg.getClass().getName())) {
+                Object pkg = XposedHelpers.getObjectField(arg, "packageName");
+                return pkg instanceof String ? (String) pkg : null;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * ColorOS skips a cold start from broadcast when the target is in the persistent restrict
+     * list, or in the background-startup restrict list while it has no process. That is the
+     * exact case FCMFix exists for: GMS waking a stopped, user-allowlisted app.
+     */
+    private void startHookValidStartFromBroadcast() {
+        hookTrustedBroadcastGate(OPLUS_APP_STARTUP_MANAGER, "validStartProcessFromBroadcast", false, args -> {
+            for (Object arg : args) if (arg instanceof String) return (String) arg;
+            return null;
+        });
+    }
+
+    /** Cloud "malicious app" lists can block a whole package's receivers, FCM included. */
+    private void startHookMaliciousBroadcast() {
+        hookTrustedBroadcastGate(OPLUS_MALICIOUS_RESTRICT_POLICY, "shouldPreventBroadcastByMaliciousCheck",
+                false, OplusProxyFix::receiverPackage);
+    }
+
+    /** Link-start limits count GMS as the launcher when it wakes many apps with FCM. */
+    private void startHookLinkStartBroadcast() {
+        hookTrustedBroadcastGate(OPLUS_LINK_START_MANAGER, "handleProcessBroadcastStartLocked",
+                false, OplusProxyFix::receiverPackage);
+    }
+
+    /**
+     * The same malicious list gates service start/bind/restart. Only bindings from a real
+     * ProcessRecord are considered: GMS binding the target for FCM/GCM, or the target binding
+     * its own FirebaseMessagingService inside its FCM delivery window (current Firebase SDKs).
+     */
+    private void startHookMaliciousService() {
+        Class<?> policyClass = XposedHelpers.findClassIfExists(OPLUS_MALICIOUS_RESTRICT_POLICY, classLoader);
+        if (policyClass == null) throw new NoClassDefFoundError(OPLUS_MALICIOUS_RESTRICT_POLICY);
+
+        int hooks = 0;
+        for (Method method : policyClass.getDeclaredMethods()) {
+            if (!"shouldPreventServiceByMaliciousCheck".equals(method.getName())
+                    || !isBooleanType(method.getReturnType())) {
+                continue;
+            }
+            XposedBridge.hookMethod(method, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (!isBootComplete) return;
+                    Object callerApp = null;
+                    Object serviceRecord = null;
+                    Intent intent = null;
+                    String type = null;
+                    for (Object arg : param.args) {
+                        if (arg == null) continue;
+                        String name = arg.getClass().getName();
+                        if ("com.android.server.am.ProcessRecord".equals(name)) callerApp = arg;
+                        else if ("com.android.server.am.ServiceRecord".equals(name)) serviceRecord = arg;
+                        else if (arg instanceof Intent) intent = (Intent) arg;
+                        else if (arg instanceof String) type = (String) arg;
+                    }
+                    if (callerApp == null || serviceRecord == null || intent == null) return;
+                    try {
+                        Object info = XposedHelpers.getObjectField(serviceRecord, "appInfo");
+                        if (!(info instanceof ApplicationInfo)) return;
+                        ApplicationInfo appInfo = (ApplicationInfo) info;
+                        String target = appInfo.packageName;
+                        if (!targetIsAllow(target)) return;
+                        int callerUid = (Integer) XposedHelpers.getObjectField(callerApp, "uid");
+                        boolean gms = isGmsUid(callerUid);
+                        boolean selfInWindow = callerUid == appInfo.uid && isInFcmDeliveryWindow(callerUid);
+                        boolean gcmBind = "bind".equals(type) && gms;
+                        if (FcmTrust.allowsService(intent.getAction(), gms, selfInWindow, gcmBind)) {
+                            if (gms) beginFcmDeliveryWindow(target);
+                            printLog("Oplus malicious service bypass: pkg=" + target
+                                    + ", action=" + intent.getAction(), true);
+                            param.setResult(false);
+                        }
+                    } catch (Throwable e) {
+                        logOnce("Unsupported malicious service attribution: " + e);
+                    }
+                }
+            });
+            hooks++;
+            printLog("Oplus malicious service hook active: " + describeMethod(method));
+        }
+        if (hooks == 0) throw new NoSuchMethodError("shouldPreventServiceByMaliciousCheck");
+    }
+
+    /**
+     * updateGmsRestrict is already a no-op, but several consumers read the state directly:
+     * OplusProxyWakeLock drops GMS/GSF partial wakelocks while it is true, and Hans/OGuard
+     * treat GMS as restricted. Pin the getter so no other writer can re-enable those paths.
+     */
+    private void startHookIsGmsRestricted() {
+        int hooks = hookAllMethods(OPLUS_BG_SCENE_MANAGER, "isGmsRestricted", Boolean.FALSE);
+        if (hooks == 0) throw new NoSuchMethodError("isGmsRestricted");
+    }
+
+    /**
+     * With the screen off in a weak-signal scene, Hans firewalls Doze-whitelisted apps that
+     * include its GMS list (chain 9) and blocks their alarms, which drops the FCM connection.
+     * Report only the Google core packages as whitelisted for that scene.
+     */
+    private void startHookWeakSignalNetWhiteList() {
+        Class<?> managerClass = XposedHelpers.findClassIfExists(OPLUS_HANS_CONNECTIVITY_MANAGER, classLoader);
+        if (managerClass == null) throw new NoClassDefFoundError(OPLUS_HANS_CONNECTIVITY_MANAGER);
+
+        int hooks = 0;
+        for (Method method : managerClass.getDeclaredMethods()) {
+            Class<?>[] types = method.getParameterTypes();
+            if (!"isWeakSignalNetWhiteList".equals(method.getName()) || !isBooleanType(method.getReturnType())
+                    || types.length != 1 || types[0] != String.class) {
+                continue;
+            }
+            XposedBridge.hookMethod(method, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (param.args[0] instanceof String && isGoogleCorePackage((String) param.args[0])) {
+                        param.setResult(true);
+                    }
+                }
+            });
+            hooks++;
+            printLog("Oplus weak-signal whitelist hook active: " + describeMethod(method));
+        }
+        if (hooks == 0) throw new NoSuchMethodError("isWeakSignalNetWhiteList(String)");
     }
 
     private interface HookAction {

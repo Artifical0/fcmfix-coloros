@@ -14,6 +14,8 @@ public class OplusDeviceIdleFix extends XposedModule {
             "com.android.server.OplusDeviceIdleHelper";
     private static final String OPLUS_GOOGLE_RESTRICTION_HELPER =
             "com.android.server.OplusGoogleRestrictionHelper";
+    private static final String OPLUS_DEEP_SLEEP_HELPER =
+            "com.android.server.alarm.OplusDeepSleepHelper";
     private static final String[] GOOGLE_DOZE_PACKAGES = new String[]{
             "com.google.android.gms",
             "com.google.android.gsf",
@@ -34,6 +36,44 @@ public class OplusDeviceIdleFix extends XposedModule {
             printLog("hook error Oplus Google alarm restrict: "
                     + e.getClass().getSimpleName() + ": " + e.getMessage());
         }
+        try {
+            startHookDeepSleepAlarm();
+        } catch (Throwable e) {
+            printLog("hook error Oplus deep-sleep alarm: "
+                    + e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * During battery deep sleep, alarms matching a network rule are held until the network is
+     * restored. The battery hook keeps GMS on the deep-sleep network whitelist (like HeyTap
+     * push), so its alarms must not wait for a restore that it does not need.
+     */
+    private void startHookDeepSleepAlarm() {
+        Class<?> helperClass = XposedHelpers.findClassIfExists(OPLUS_DEEP_SLEEP_HELPER, classLoader);
+        if (helperClass == null) throw new NoClassDefFoundError(OPLUS_DEEP_SLEEP_HELPER);
+
+        int hooks = 0;
+        for (Method method : helperClass.getDeclaredMethods()) {
+            String name = method.getName();
+            if ((!"filterDeepSleepAlarm".equals(name) && !"ruleMatchDeepSleepAlarm".equals(name))
+                    || method.getReturnType() != boolean.class || method.getParameterTypes().length != 1) {
+                continue;
+            }
+            XposedBridge.hookMethod(method, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if (param.args[0] == null) return;
+                    Object packageName = XposedHelpers.getObjectField(param.args[0], "packageName");
+                    if (GOOGLE_DOZE_PACKAGES[0].equals(packageName) || GOOGLE_DOZE_PACKAGES[1].equals(packageName)) {
+                        param.setResult(false);
+                    }
+                }
+            });
+            hooks++;
+            printLog("Oplus deep-sleep alarm hook active: " + describeMethod(method));
+        }
+        if (hooks == 0) throw new NoSuchMethodError(OPLUS_DEEP_SLEEP_HELPER + "#filterDeepSleepAlarm");
     }
 
     /**
