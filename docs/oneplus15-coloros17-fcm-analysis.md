@@ -102,3 +102,29 @@
   `skipScheduleReceiver*` 整体放行（已由各道带来源核验的放行覆盖）；投递窗口 60 秒（未采纳，保留 20 秒）。
 - @zopulus：独立发现深度睡眠白名单（本仓库实现覆盖两种断网模式）；Ice Box 同步激活（与不阻塞广播线程的设计相反，未合并）；
   其余为包名与界面重写。
+
+## 实测：深度睡眠白名单未生效（53-coloros-12-rc1）
+
+53-coloros-11 在 `Battery.apk` 的 `ControllerCenter.addPkgWhiteArray` / `addUidWhiteArray` 中追加 GMS UID。
+维护者设备上夜间 FCM 断开 9 小时（`last close code ERR_IO_RST_HB`），`/data/oplus/os/battery/deepsleepRcd.txt` 记录：
+
+```text
+03:16:04 set netWork: function = new, uid = [1000:31304, 10122], result = success
+03:16:04 MobileData disable, reason:disable, useCustomMethod:true, useNetworkDisableWhiteList:true
+03:16:04 Wifi disable, reason:disable, useCustomMethod:true, useNetworkDisableWhiteList:true
+03:16:04 disableNetWork:saveDisNetType:disNetType = 4
+```
+
+下发的白名单不含 GMS（UID 10123）。两个私有方法很短，预编译的 `Battery.apk` 很可能将其内联进调用方，导致 Hook 不触发。
+GMS 心跳无回应后连接被重置；8 次重连失败后不再重试，网络恢复时 Wi-Fi 未变化，因此一直未重连。
+`dumpsys alarm` 中 `GCM_CONN_ALARM` 最后一次在 9h31m 前；手动发送 `GCM_RECONNECT` 后立即恢复。
+
+处理：
+
+- 白名单最终经反射调用 `android.nwpower.OAppNetControlManager.networkDisableWhiteList(List, int)`，到达 system_server 的
+  `OAppNetControlService.networkDisableWhiteList`（`enable != 1` 开始断网，`== 1` 恢复）。改为在服务端开始断网时追加
+  GMS UID（纯 UID 条目被解析为整个 UID 放行），不受电池 APK 编译方式影响；
+- 恢复成功后延迟 3 秒向 GMS 发送 `com.google.android.intent.action.GCM_RECONNECT`。
+
+同一记录中 `handleDeepSleepLimitNetWhileDozeChange` 对链 9 设置拒绝的 UID 来自配置 `LimitNetAppList`，不含 GMS。
+深度睡眠另有关闭移动数据 / Wi-Fi、开启飞行模式等方式，属于整机断网，白名单不适用；恢复时网络发生变化，GMS 会自行重连。

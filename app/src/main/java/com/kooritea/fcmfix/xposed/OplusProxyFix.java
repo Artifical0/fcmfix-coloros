@@ -40,6 +40,7 @@ public class OplusProxyFix extends XposedModule {
             "com.android.server.hans.device.OplusHansConnectivityManager";
     private static final String OPLUS_MALICIOUS_RESTRICT_POLICY =
             "com.android.server.am.MaliciousRestrictPolicy";
+    private static final String GOOGLE_GMS_PACKAGE = "com.google.android.gms";
     private static final String OPLUS_HANS_MANAGER =
             "com.android.server.am.OplusHansManager";
     private static final String OPLUS_LINK_START_MANAGER =
@@ -97,6 +98,81 @@ public class OplusProxyFix extends XposedModule {
         runHook("malicious service check", this::startHookMaliciousService);
         runHook("link-start broadcast check", this::startHookLinkStartBroadcast);
         runHook("Hans job FCM window", this::startHookHansJobWindow);
+        runHook("night network whitelist", this::startHookNightNetworkWhitelist);
+    }
+
+    /**
+     * Battery deep sleep cuts the network with OAppNetControlService.networkDisableWhiteList
+     * (enable != 1 starts, enable == 1 restores). Field logs showed the battery-side list
+     * reaching the service without the GMS UID, so GMS lost its socket at night
+     * (ERR_IO_RST_HB) and never retried after the restore. Add the GMS UID at the service
+     * boundary, then ask GMS to reconnect once the network is back.
+     */
+    private void startHookNightNetworkWhitelist() {
+        Class<?> serviceClass = XposedHelpers.findClassIfExists(OPLUS_APP_NET_CONTROL_SERVICE, classLoader);
+        if (serviceClass == null) throw new NoClassDefFoundError(OPLUS_APP_NET_CONTROL_SERVICE);
+
+        int hooks = 0;
+        for (Method method : serviceClass.getDeclaredMethods()) {
+            Class<?>[] types = method.getParameterTypes();
+            if (!"networkDisableWhiteList".equals(method.getName()) || types.length != 2
+                    || !java.util.List.class.isAssignableFrom(types[0]) || types[1] != int.class) {
+                continue;
+            }
+            XposedBridge.hookMethod(method, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if ((Integer) param.args[1] == 1 || !(param.args[0] instanceof java.util.List)) return;
+                    int uid = getTargetUidFromPackageName(GOOGLE_GMS_PACKAGE);
+                    if (uid < 0) return;
+                    java.util.List<?> original = (java.util.List<?>) param.args[0];
+                    String entry = String.valueOf(uid);
+                    for (Object item : original) {
+                        if (item != null && (entry.equals(item) || item.toString().startsWith(entry + ":"))) return;
+                    }
+                    java.util.List<Object> whitelist = new java.util.ArrayList<>(original);
+                    whitelist.add(entry);
+                    param.args[0] = whitelist;
+                    printLog("Oplus night network whitelist: added GMS uid=" + uid, true);
+                }
+
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    if ((Integer) param.args[1] != 1 || !(param.getResult() instanceof Integer)
+                            || (Integer) param.getResult() != 0 || context == null) {
+                        return;
+                    }
+                    // Give netd a moment to drop the whitelist chain before GMS reconnects.
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                            OplusProxyFix::requestGmsReconnect, 3000);
+                }
+            });
+            hooks++;
+            printLog("Oplus night network whitelist hook active: " + describeMethod(method));
+        }
+        if (hooks == 0) throw new NoSuchMethodError("OAppNetControlService#networkDisableWhiteList");
+    }
+
+    /**
+     * Same broadcast as FCM Diagnostics' RECONNECT; GMS reconnects if its MCS link is down.
+     * Runs in system_server: lint reads the module manifest, so the host permission is
+     * checked at runtime here instead of being requested by the module APK.
+     */
+    @android.annotation.SuppressLint("MissingPermission")
+    private static void requestGmsReconnect() {
+        try {
+            if (context.checkSelfPermission("android.permission.INTERACT_ACROSS_USERS")
+                    != PackageManager.PERMISSION_GRANTED) {
+                printLog("GCM_RECONNECT skipped: host cannot send a user-qualified broadcast");
+                return;
+            }
+            Intent reconnect = new Intent("com.google.android.intent.action.GCM_RECONNECT");
+            reconnect.setPackage(GOOGLE_GMS_PACKAGE);
+            context.sendBroadcastAsUser(reconnect, android.os.Process.myUserHandle());
+            printLog("Oplus night network restored: GCM_RECONNECT sent", true);
+        } catch (Throwable e) {
+            printLog("GCM_RECONNECT after night network restore failed: " + e);
+        }
     }
 
     /**

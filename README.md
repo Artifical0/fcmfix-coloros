@@ -91,7 +91,8 @@ ColorOS 17 的“流量管理”会隐藏这几个 Google 包的联网开关（�
 [流量管理里没有 Google 入口](docs/report-issue.md#流量管理里没有-google-入口)。
 
 电池组件的“睡眠待机优化”（深度睡眠）会在长时间静置时整机断网，只保留 HeyTap 推送、VoWiFi 等白名单。
-本模块把 GMS 也加入该白名单，使 FCM 与国内推送通道一样在深度睡眠时保持连接。
+本模块在系统框架的 `OAppNetControlService.networkDisableWhiteList` 处把 GMS 加入该白名单，使 FCM 与国内推送通道
+一样在深度睡眠时保持连接；网络恢复后再向 GMS 发送一次重连请求，防止它断开后不再重试。
 
 ## 它不能解决什么
 
