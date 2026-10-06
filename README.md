@@ -11,7 +11,7 @@ GMS 已经收到推送，但 ColorOS 的后台限制把消息拦在半路：应�
 
 | | |
 | --- | --- |
-| 当前版本 | [53-coloros-11](https://github.com/Artifical0/fcmfix-coloros/releases/latest)（GitHub Release 与 LSPosed 模块仓库同步） |
+| 当前版本 | [53-coloros-12](https://github.com/Artifical0/fcmfix-coloros/releases/latest)（GitHub Release） |
 | 支持系统 | ColorOS 16、ColorOS 17（Android 16 / 17）国行 |
 | 验证机型 | 一加 15（PLK110）；其他 ColorOS 16/17 机型可能可用，但未经同等级验证 |
 | 作用域 | `系统框架` + `电池`（`com.oplus.battery`），两者都要勾选 |
