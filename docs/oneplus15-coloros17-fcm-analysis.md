@@ -145,3 +145,29 @@ GMS 心跳无回应后连接被重置；8 次重连失败后不再重试，网�
 这条路径未经实测。处理：在 system_server 的 `setFirewallUidRuleForNetworkType` 中丢弃针对 GMS / GSF / Play 商店 /
 ConfigUpdater（按 appId 匹配，覆盖分身用户）的拒绝规则，放行规则照常执行。策略文件中的值不变，
 `service call networking_control 2` 仍可能读到 4，以 FCM 连接状态和日志 `Oplus Google network reject dropped` 为准。
+
+## 全链路复核（53-coloros-12-rc2）
+
+按“GMS 存活 → GMS 联网 → 心跳闹钟 → Doze → 送达目标应用”逐段复核。53-coloros-11 的深度睡眠 Hook 因方法被内联而失效，
+因此本次重点排查同类风险：同一 dex 内被调用的短方法（getter、私有小方法）上的 Hook 可能不触发，
+关键限制改在 Binder 入口、跨 jar 调用的服务方法，或体积足够大、不会被内联的方法上兜底。
+
+| 环节 | 发现 | 处理 |
+| --- | --- | --- |
+| 解锁后禁网 | 见上一节 | system_server `setFirewallUidRuleForNetworkType` 丢弃 Google 拒绝规则 |
+| Google 限制广播 | 三个 system_server 接收方都从 `restrict_enable` 读取状态；`isGoogleRestrct()` 是单行 getter，与调用方同在 `oplus-service-jobscheduler.jar`，可能被内联 | 在 `ActivityManagerService.broadcastIntentWithFeature` 入口把 `restrict_enable=true` 改为 `false`，不依赖电池作用域 |
+| `isGmsRestricted()` | 单行 getter，可能被内联 | 已有的 `updateGmsRestrict` / `registerGmsRestrictObserver` 空实现使字段保持 `false`，getter 被内联也不受影响 |
+| Doze 白名单 | `getNewWhiteList` 是私有短方法，只被 `updateWhiteList` 调用，可能被内联 | 同时在 `whiteListChangedHandle(ArrayList)`（体积大，不会被内联）调用前补入 GMS / GSF / Play 商店 |
+| 深度睡眠恢复后强制停止 GMS | `ControllerCenter.onScreenOn`：逻辑断网（`disNetType == 4`）恢复时经 Osense `CommonExternalClean` strategy 2 **强制停止** GMS（reason `DeepSleepLogicDisNetRestore`），GMS 的闹钟全部被取消，直到有客户端绑定才重新启动 | GMS 已在夜间联网白名单内，恢复后另发 `GCM_RECONNECT`，因此在 `OsenseResManagerService$3.requestSceneActionSync`（Binder 实现）跳过这一次强制停止；其他原因的清理不受影响 |
+
+核查后无需处理：
+
+- 熄屏闹钟对齐 `OplusAlarmAdjustment`：GMS 心跳 `GCM_HB_ALARM` 为非精确闹钟（实测窗口约 12 分钟），按 5 分钟或 NAT 间隔取整，
+  偏移在一个间隔内，不会让心跳失效；`OplusAlarmNatDetect` 只管理配置中的首选心跳应用。
+- 临时白名单 `shouldIgnoreTempWhitelistChange`：只是跳过已在白名单中的应用的重复通知，不阻止 FCM 高优先级消息的临时放行。
+- Hans 冻结的广播延后（`DeferProxyPolicy`）：作用于被冻结的 UID，FCM 投递时模块已解冻目标，解冻会清除延后策略。
+- `OAppNetControlService` 后台应用 / 进程断连：由 Hans 冻结触发，GMS 不会被冻结，投递窗口内的目标已放行。
+- `OSysNetControlService` 增强夜间断网（`EnhancedNdAction`，云控规则）与电池深度睡眠的关网方式：整机关闭 Wi-Fi / 移动数据，
+  所有推送通道一起断开，白名单不适用；恢复时网络变化，GMS 自行重连。
+- `CNGmsControlService`（OplusExSystemService）：国行“Google 移动服务”开关。关闭时禁用 GMS 属用户选择；
+  出境自动开启后回国（MCC 460）且状态为自动开启时会自动关闭，属于少见情况，未处理。

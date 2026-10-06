@@ -116,22 +116,25 @@ public class OplusDeviceIdleFix extends XposedModule {
         int whitelistHooks = 0;
         int restrictSwitchHooks = 0;
         for (Method method : helperClass.getDeclaredMethods()) {
-            if ("getNewWhiteList".equals(method.getName())) {
+            // getNewWhiteList is a short private helper and may be inlined into updateWhiteList;
+            // whiteListChangedHandle receives the same list and is too large to inline.
+            if ("getNewWhiteList".equals(method.getName())
+                    || "whiteListChangedHandle".equals(method.getName())) {
+                final boolean before = "whiteListChangedHandle".equals(method.getName());
                 XposedBridge.hookMethod(method, new XC_MethodHook() {
                     @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        if (before) restoreGoogleEntries(findListArgument(param.args));
+                    }
+
+                    @Override
                     protected void afterHookedMethod(MethodHookParam param) {
+                        if (before) return;
                         List<String> whiteList = findListArgument(param.args);
                         if (whiteList == null && param.getResult() instanceof List) {
                             whiteList = (List<String>) param.getResult();
                         }
-                        if (whiteList == null) return;
-
-                        for (String packageName : GOOGLE_DOZE_PACKAGES) {
-                            if (!whiteList.contains(packageName)) {
-                                whiteList.add(packageName);
-                                printLog("Oplus Doze whitelist restored: " + packageName, true);
-                            }
-                        }
+                        restoreGoogleEntries(whiteList);
                     }
                 });
                 whitelistHooks++;
@@ -149,9 +152,19 @@ public class OplusDeviceIdleFix extends XposedModule {
                 printLog("Oplus Doze Google restriction hook active: " + describeMethod(method));
             }
         }
-        if (whitelistHooks == 0) throw new NoSuchMethodError("getNewWhiteList");
+        if (whitelistHooks == 0) throw new NoSuchMethodError("getNewWhiteList/whiteListChangedHandle");
         if (restrictSwitchHooks == 0) {
             printLog("OplusDeviceIdleHelper#getGoogleRestrictSwitch not found");
+        }
+    }
+
+    private void restoreGoogleEntries(List<String> whiteList) {
+        if (whiteList == null) return;
+        for (String packageName : GOOGLE_DOZE_PACKAGES) {
+            if (!whiteList.contains(packageName)) {
+                whiteList.add(packageName);
+                printLog("Oplus Doze whitelist restored: " + packageName, true);
+            }
         }
     }
 

@@ -50,6 +50,10 @@ public class OplusProxyFix extends XposedModule {
             "com.google.android.configupdater"
     };
     private static final int FIREWALL_RULE_REJECT = 2;
+    private static final String GOOGLE_RESTRICT_CHANGE = "oplus.intent.action.google_restrict_change";
+    private static final String OSENSE_RES_MANAGER_SERVICE =
+            "com.android.server.oplus.osense.OsenseResManagerService";
+    private static final String DEEP_SLEEP_GMS_CLEAN_REASON = "DeepSleepLogicDisNetRestore";
     private static final String OPLUS_HANS_MANAGER =
             "com.android.server.am.OplusHansManager";
     private static final String OPLUS_LINK_START_MANAGER =
@@ -109,6 +113,99 @@ public class OplusProxyFix extends XposedModule {
         runHook("Hans job FCM window", this::startHookHansJobWindow);
         runHook("night network whitelist", this::startHookNightNetworkWhitelist);
         runHook("Google network firewall", this::startHookGoogleNetworkFirewall);
+        runHook("Google restrict broadcast", this::startHookGoogleRestrictBroadcast);
+        runHook("deep-sleep GMS force-stop", this::startHookDeepSleepGmsForceStop);
+    }
+
+    /**
+     * When the screen turns on after a battery deep-sleep "logical" network cut, Battery asks
+     * Osense to clean GMS ("DeepSleepLogicDisNetRestore", strategy 2 = force-stop) so that it
+     * reconnects. A force-stop also cancels every GMS alarm and leaves it stopped until a
+     * client binds it. GMS now stays on the deep-sleep network whitelist and gets
+     * GCM_RECONNECT after the restore, so skip only this force-stop. The Osense Binder
+     * implementation is an anonymous class of OsenseResManagerService.
+     */
+    private void startHookDeepSleepGmsForceStop() {
+        int hooks = 0;
+        for (int i = 1; i <= 30 && hooks == 0; i++) {
+            Class<?> clazz = XposedHelpers.findClassIfExists(OSENSE_RES_MANAGER_SERVICE + "$" + i, classLoader);
+            if (clazz == null) continue;
+            for (Method method : clazz.getDeclaredMethods()) {
+                Class<?>[] types = method.getParameterTypes();
+                if (!"requestSceneActionSync".equals(method.getName()) || types.length != 1
+                        || types[0] != android.os.Bundle.class || !isBooleanType(method.getReturnType())) {
+                    continue;
+                }
+                XposedBridge.hookMethod(method, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        if (!(param.args[0] instanceof android.os.Bundle)) return;
+                        android.os.Bundle bundle = (android.os.Bundle) param.args[0];
+                        if (!GOOGLE_GMS_PACKAGE.equals(bundle.getString("pkgName"))
+                                || !DEEP_SLEEP_GMS_CLEAN_REASON.equals(bundle.getString("reason"))) {
+                            return;
+                        }
+                        param.setResult(Boolean.FALSE);
+                        printLog("Oplus deep-sleep GMS force-stop skipped", true);
+                    }
+                });
+                hooks++;
+                printLog("Oplus deep-sleep GMS force-stop hook active: " + describeMethod(method));
+            }
+        }
+        if (hooks == 0) throw new NoSuchMethodError("OsenseResManagerService$*#requestSceneActionSync(Bundle)");
+    }
+
+    /**
+     * Battery broadcasts google_restrict_change(restrict_enable=true) when its Google probe
+     * fails. Three system_server receivers act on it: OplusGoogleRestrictionHelper (GMS wakeup
+     * alarms downgraded), AppStandbyControllerExtImpl (RARE bucket) and
+     * OplusNetworkPolicyManagerServiceEx. The battery-scope hook clears the flag at the sender;
+     * this clears it at the Binder entry so a missing battery scope, or an inlined getter such
+     * as isGoogleRestrct(), cannot leave GMS restricted. List updates still go through.
+     */
+    private void startHookGoogleRestrictBroadcast() {
+        String[] classes = new String[]{
+                "com.android.server.am.ActivityManagerService",
+                "com.android.server.am.BroadcastController"
+        };
+        int hooks = 0;
+        for (String className : classes) {
+            Class<?> clazz = XposedHelpers.findClassIfExists(className, classLoader);
+            if (clazz == null) continue;
+            for (Method method : clazz.getDeclaredMethods()) {
+                if (!"broadcastIntentWithFeature".equals(method.getName())) continue;
+                Class<?>[] types = method.getParameterTypes();
+                int intentIndex = -1;
+                for (int i = 0; i < types.length; i++) {
+                    if (types[i] == Intent.class) {
+                        intentIndex = i;
+                        break;
+                    }
+                }
+                if (intentIndex < 0) continue;
+                final int index = intentIndex;
+                XposedBridge.hookMethod(method, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        Object arg = param.args[index];
+                        if (!(arg instanceof Intent)) return;
+                        Intent intent = (Intent) arg;
+                        if (!GOOGLE_RESTRICT_CHANGE.equals(intent.getAction())
+                                || !intent.getBooleanExtra("restrict_enable", false)) {
+                            return;
+                        }
+                        intent.putExtra("restrict_enable", false);
+                        printLog("Oplus Google restrict broadcast cleared in system_server", true);
+                    }
+                });
+                hooks++;
+                printLog("Oplus Google restrict broadcast hook active: " + describeMethod(method));
+            }
+            // AMS delegates to BroadcastController; one entry hook is enough.
+            if (hooks > 0) break;
+        }
+        if (hooks == 0) throw new NoSuchMethodError("broadcastIntentWithFeature(Intent)");
     }
 
     /**
