@@ -128,3 +128,20 @@ GMS 心跳无回应后连接被重置；8 次重连失败后不再重试，网�
 
 同一记录中 `handleDeepSleepLimitNetWhileDozeChange` 对链 9 设置拒绝的 UID 来自配置 `LimitNetAppList`，不含 GMS。
 深度睡眠另有关闭移动数据 / Wi-Fi、开启飞行模式等方式，属于整机断网，白名单不适用；恢复时网络发生变化，GMS 会自行重连。
+
+## 解锁后 Google 禁网（53-coloros-12-rc2）
+
+有用户反馈 FCM Diagnostics 一直未连接，`last close code` 为 `ERR_CLOSE_BY_USER_UNLOCKED`，即首次解锁前已连接，
+解锁时 GMS 断开重连后再也没连上。
+
+`Battery.apk` 的 `GoogleRestrictionController.noteBootComplete()` 在开机完成后 5 秒用 `NetworkDetector` 探测 Google，
+结果为 `RESULT_FAIL`（或重查 3 次仍未通过）时调用 `K(true, …)`，对 `google_network_restriction_list` 中的包执行
+`OplusNetworkingControlManager.setUidPolicy(uid, 4)`。首次解锁时代理 App 通常尚未启动，国内网络下探测基本失败。
+`networking_control`（OplusExSystemService）随后调用 system_server 的
+`OplusNetworkManagementService.setFirewallUidRuleForNetworkType(type, uid, 2)` 下发 netd 规则
+（type 2 / 3 分别为移动数据 / Wi-Fi，rule 2 拒绝、1 放行），全仓库只有这一处调用方。
+
+53-coloros-11 只在电池进程改写 `setUidPolicy`，依赖电池作用域且该调用未被内联；维护者家中网络探测总能成功，
+这条路径未经实测。处理：在 system_server 的 `setFirewallUidRuleForNetworkType` 中丢弃针对 GMS / GSF / Play 商店 /
+ConfigUpdater（按 appId 匹配，覆盖分身用户）的拒绝规则，放行规则照常执行。策略文件中的值不变，
+`service call networking_control 2` 仍可能读到 4，以 FCM 连接状态和日志 `Oplus Google network reject dropped` 为准。

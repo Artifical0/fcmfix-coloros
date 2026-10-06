@@ -41,6 +41,15 @@ public class OplusProxyFix extends XposedModule {
     private static final String OPLUS_MALICIOUS_RESTRICT_POLICY =
             "com.android.server.am.MaliciousRestrictPolicy";
     private static final String GOOGLE_GMS_PACKAGE = "com.google.android.gms";
+    private static final String OPLUS_NETWORK_MANAGEMENT_SERVICE =
+            "com.android.server.net.OplusNetworkManagementService";
+    private static final String[] GOOGLE_NETWORK_PACKAGES = new String[]{
+            GOOGLE_GMS_PACKAGE,
+            "com.google.android.gsf",
+            "com.android.vending",
+            "com.google.android.configupdater"
+    };
+    private static final int FIREWALL_RULE_REJECT = 2;
     private static final String OPLUS_HANS_MANAGER =
             "com.android.server.am.OplusHansManager";
     private static final String OPLUS_LINK_START_MANAGER =
@@ -99,6 +108,56 @@ public class OplusProxyFix extends XposedModule {
         runHook("link-start broadcast check", this::startHookLinkStartBroadcast);
         runHook("Hans job FCM window", this::startHookHansJobWindow);
         runHook("night network whitelist", this::startHookNightNetworkWhitelist);
+        runHook("Google network firewall", this::startHookGoogleNetworkFirewall);
+    }
+
+    /**
+     * Battery's GoogleRestrictionController probes Google 5 s after BOOT_COMPLETED (i.e. right
+     * after the first unlock) and, if the probe fails, sets the Google core UIDs to
+     * POLICY_REJECT_ALL. OplusExSystemService's networking_control service turns that into
+     * setFirewallUidRuleForNetworkType(type, uid, 2) here; GMS then sits disconnected with
+     * ERR_CLOSE_BY_USER_UNLOCKED. The battery-scope hook rewrites the policy at its source,
+     * but it depends on the battery scope and on the call not being inlined, so drop the
+     * reject rule at this system_server boundary as well. Clears (rule 1) still pass.
+     */
+    private void startHookGoogleNetworkFirewall() {
+        Class<?> serviceClass = XposedHelpers.findClassIfExists(OPLUS_NETWORK_MANAGEMENT_SERVICE, classLoader);
+        if (serviceClass == null) throw new NoClassDefFoundError(OPLUS_NETWORK_MANAGEMENT_SERVICE);
+
+        int hooks = 0;
+        for (Method method : serviceClass.getDeclaredMethods()) {
+            Class<?>[] types = method.getParameterTypes();
+            if (!"setFirewallUidRuleForNetworkType".equals(method.getName()) || types.length != 3
+                    || types[0] != int.class || types[1] != int.class || types[2] != int.class) {
+                continue;
+            }
+            XposedBridge.hookMethod(method, new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    int uid = (Integer) param.args[1];
+                    if ((Integer) param.args[2] != FIREWALL_RULE_REJECT || !isGoogleNetworkUid(uid)) return;
+                    param.setResult(null);
+                    printLog("Oplus Google network reject dropped: uid=" + uid
+                            + ", type=" + param.args[0], true);
+                }
+            });
+            hooks++;
+            printLog("Oplus Google network firewall hook active: " + describeMethod(method));
+        }
+        if (hooks == 0) throw new NoSuchMethodError("OplusNetworkManagementService#setFirewallUidRuleForNetworkType");
+    }
+
+    private static boolean isGoogleNetworkUid(int uid) {
+        if (context == null) return false;
+        int appId = uid % 100_000;
+        PackageManager packageManager = context.getPackageManager();
+        for (String packageName : GOOGLE_NETWORK_PACKAGES) {
+            try {
+                if (packageManager.getPackageUid(packageName, 0) % 100_000 == appId) return true;
+            } catch (PackageManager.NameNotFoundException ignored) {
+            }
+        }
+        return false;
     }
 
     /**
