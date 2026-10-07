@@ -139,11 +139,15 @@ public class OplusBatteryNetworkFix extends XposedModule {
 
     private static volatile Boolean ignoresGmsUserSet;
 
-    private static boolean batteryIgnoresGmsUserSet() {
+    /**
+     * True when Traffic Monitor hides the Google network toggles, so no Google network
+     * policy can come from the user. Lookup failures are not cached.
+     */
+    static boolean batteryIgnoresGmsUserSet() {
         Boolean cached = ignoresGmsUserSet;
         if (cached != null) return cached;
         if (context == null) return false;
-        boolean ignores = false;
+        boolean ignores;
         try {
             android.os.Bundle metaData = context.getPackageManager()
                     .getApplicationInfo(BATTERY_PACKAGE, PackageManager.GET_META_DATA).metaData;
@@ -152,6 +156,7 @@ public class OplusBatteryNetworkFix extends XposedModule {
             ignores = value != null && "true".equals(value.toString());
         } catch (Throwable e) {
             printLog("Cannot read " + IGNORE_GMS_USER_SET + ": " + e.getMessage());
+            return false;
         }
         ignoresGmsUserSet = ignores;
         return ignores;

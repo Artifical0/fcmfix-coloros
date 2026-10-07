@@ -11,7 +11,7 @@ GMS 已经收到推送，但 ColorOS 的后台限制把消息拦在半路：应�
 
 | | |
 | --- | --- |
-| 当前版本 | [53-coloros-12](https://github.com/Artifical0/fcmfix-coloros/releases/latest)（GitHub Release） |
+| 当前版本 | [53-coloros-12.1](https://github.com/Artifical0/fcmfix-coloros/releases/latest)（GitHub Release 与 LSPosed 模块仓库同步） |
 | 支持系统 | ColorOS 16、ColorOS 17（Android 16 / 17）国行 |
 | 验证机型 | 一加 15（PLK110）；其他 ColorOS 16/17 机型可能可用，但未经同等级验证 |
 | 作用域 | `系统框架` + `电池`（`com.oplus.battery`），两者都要勾选 |
@@ -79,6 +79,11 @@ ColorOS 的 `com.oplus.battery` 会在 Google 连通性探测失败时调用系�
 `POLICY_REJECT_ALL` 写入，并改为 `POLICY_NONE`，不是仅 Hook 某一个 controller。
 不直接修改“设置/流量管理”进程中的规则；但如果某个 OTA 将手动设置也转交电池进程
 通过同一接口写入，该写入也可能被影响，需针对对应固件复查。
+
+系统框架中还有一层兜底：电池组件声明 `IgnoreGmsUserSet=true`（ColorOS 17 国行，流量管理隐藏了
+Google 联网开关）时，系统下发针对 Google 核心包的禁网防火墙规则会被丢弃，不依赖电池作用域。
+这一层无法区分规则来自电池组件还是流量管理，因此在仍开放 Google 联网开关的系统（如 ColorOS 16）上不生效，
+用户手动设置的 Wi-Fi 或移动数据权限保持不变。
 
 同一次探测失败时，电池组件还会广播 `oplus.intent.action.google_restrict_change`。
 ColorOS 17 的系统框架据此降级 GMS 闹钟并把 Google 应用放入 RARE 待机分组。本模块只把该广播中的

@@ -146,6 +146,10 @@ GMS 心跳无回应后连接被重置；8 次重连失败后不再重试，网�
 ConfigUpdater（按 appId 匹配，覆盖分身用户）的拒绝规则，放行规则照常执行。策略文件中的值不变，
 `service call networking_control 2` 仍可能读到 4，以 FCM 连接状态和日志 `Oplus Google network reject dropped` 为准。
 
+53-coloros-12.1 起，这一层只在电池组件声明 `IgnoreGmsUserSet=true` 时生效。该接口收到的规则无法区分来自电池组件
+还是流量管理；ColorOS 17 国行流量管理据此隐藏 Google 联网开关，用户无法手动设置，丢弃拒绝规则不会覆盖用户选择。
+ColorOS 16 等仍开放开关的系统上不拦截，由电池进程内的 `setUidPolicy` 改写处理电池组件的自动禁网。
+
 ## 全链路复核（53-coloros-12-rc2）
 
 按“GMS 存活 → GMS 联网 → 心跳闹钟 → Doze → 送达目标应用”逐段复核。53-coloros-11 的深度睡眠 Hook 因方法被内联而失效，
