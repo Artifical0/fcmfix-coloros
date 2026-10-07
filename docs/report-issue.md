@@ -115,7 +115,7 @@ su -c 'service call networking_control 2 i32 $(pm list packages -U com.google.an
 
 FCMFix 53-coloros-11 起会自动处理：电池组件自己声明了 `IgnoreGmsUserSet=true`（ColorOS 17 即如此，此时流量管理隐藏这些开关）时，
 电池进程读取该标记一律视为 `0`，电池组件每次开机重新接管这几个包，FCMFix 再把策略改为不限制。
-日志中会出现 `Oplus Battery ignores stale GMS user-change flag`。流量管理仍开放这些开关的系统（如 ColorOS 16）不受影响，
+日志中会出现 `Oplus Battery ignores stale GMS user-change flag`。电池组件没有这一声明的系统不受影响，
 继续尊重用户的设置。
 
 旧版本或自动处理未生效时，可以手动清除该标记并重启：

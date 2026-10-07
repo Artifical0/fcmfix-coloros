@@ -148,7 +148,8 @@ ConfigUpdater（按 appId 匹配，覆盖分身用户）的拒绝规则，放行
 
 53-coloros-12.1 起，这一层只在电池组件声明 `IgnoreGmsUserSet=true` 时生效。该接口收到的规则无法区分来自电池组件
 还是流量管理；ColorOS 17 国行流量管理据此隐藏 Google 联网开关，用户无法手动设置，丢弃拒绝规则不会覆盖用户选择。
-ColorOS 16 等仍开放开关的系统上不拦截，由电池进程内的 `setUidPolicy` 改写处理电池组件的自动禁网。
+电池组件没有这一声明的系统上不拦截，由电池进程内的 `setUidPolicy` 改写处理电池组件的自动禁网。
+ColorOS 16 的电池组件是否声明 `IgnoreGmsUserSet`、流量管理是否显示 Google 联网开关，尚未对照固件核实。
 
 ## 全链路复核（53-coloros-12-rc2）
 

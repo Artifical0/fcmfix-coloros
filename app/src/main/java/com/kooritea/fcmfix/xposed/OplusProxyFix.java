@@ -217,8 +217,8 @@ public class OplusProxyFix extends XposedModule {
      * but it depends on the battery scope and on the call not being inlined, so drop the
      * reject rule at this system_server boundary as well. Clears (rule 1) still pass.
      * This boundary cannot tell the battery from Traffic Monitor, so it only acts while
-     * the Google toggles are hidden (IgnoreGmsUserSet); where users can still set them
-     * (ColorOS 16), their manual Wi-Fi/mobile rules are left alone.
+     * the Google toggles are hidden (IgnoreGmsUserSet); without that declaration, manual
+     * Wi-Fi/mobile rules are left alone.
      */
     private void startHookGoogleNetworkFirewall() {
         Class<?> serviceClass = XposedHelpers.findClassIfExists(OPLUS_NETWORK_MANAGEMENT_SERVICE, classLoader);
