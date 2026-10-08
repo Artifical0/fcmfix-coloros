@@ -1,5 +1,6 @@
 package com.kooritea.fcmfix.xposed;
 
+import android.Manifest;
 import android.app.PendingIntent;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
@@ -264,6 +265,11 @@ public class BroadcastFix extends XposedModule {
                                 notification.setLargeIcon(icon);
                             }
                             notification.setContentIntent(pendingIntent).setAutoCancel(true);
+                            if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(
+                                    Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                                printLog("No-response notification skipped: host cannot post notifications", false);
+                                return;
+                            }
                             notificationManager.notify((int) System.currentTimeMillis(), notification.build());
                         }else{
                             printLog("无法获取目标应用active: " + packageName,false);
