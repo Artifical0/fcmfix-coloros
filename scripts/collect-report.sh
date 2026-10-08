@@ -42,6 +42,22 @@ section() { echo; echo "== $1"; }
   section "google_restric_info（1 表示系统判定 Google 受限）"
   settings get secure google_restric_info
 
+  # Lines are "<list>,<package>,<uid>"; FCMFix keeps GMS/GSF on the Doze whitelist.
+  section "Google 核心包 Doze 白名单"
+  dumpsys deviceidle whitelist | grep -E ",(com\.google\.android\.gms|com\.google\.android\.gsf)," || echo "GMS/GSF 不在 Doze 白名单"
+
+  # Battery reads Settings.Secure deepsleep_switch_state (1 = deep sleep may cut the network) and
+  # logs every cut/restore to deepsleepRcd.txt, alternating with deepsleepRcdAnother.txt.
+  section "睡眠待机优化（deepsleep_switch_state：1 允许深度睡眠断网，null 为系统默认）"
+  echo "deepsleep_switch_state=$(settings get secure deepsleep_switch_state)"
+  rcd=$(ls -t /data/oplus/os/battery/deepsleepRcd*.txt 2>/dev/null | head -n 1)
+  if [ -n "$rcd" ]; then
+    echo "-- $rcd（最近 40 行）"
+    tail -n 40 "$rcd"
+  else
+    echo "没有深度睡眠记录"
+  fi
+
   # ColorOS 17 liboplusNetd hangs its per-UID blocks on fw_INPUT/fw_OUTPUT as REJECT/DROP rules that
   # match pinned BPF programs; the UIDs live in BPF maps. The pkts column shows which block is firing.
   section "防火墙链（reject_wlan_uid / drop_cell_uid / reject_qcom_uid 为流量管理联网策略，netdisable 为深度睡眠断网，hans 为冻结断网）"

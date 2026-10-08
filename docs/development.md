@@ -26,10 +26,7 @@
 
 ## 诊断日志
 
-- system_server 中有权限时用 `sendBroadcastAsUser(intent, Process.myUserHandle())` 发送诊断广播，只发给本用户的 GMS；
-  无权限时只保留本地日志，不回退到会产生“without a qualified user”警告的普通广播。
-- 广播由独立 `FCMFix-log` 工作线程发送（队列 16 项，满时丢弃诊断转发而非 FCM 消息，空闲 30 秒退出），
-  不在收到 FCM 的 Binder 调用栈上发送，不携带或重放原 Intent。
+- 日志只写入 logcat（标签 `fcmfix`），不再转发到 GMS：转发依赖 GMS 作用域，而模块不使用该作用域。
 - 限频：完全相同的诊断文本 30 秒最多输出一次；每进程每 5 秒最多 32 条；缓存最多 128 个键；单条最多 2048 字符。
   下一条输出附带 `suppressed N diagnostic lines since last output`，这是被合并的日志行数，不是丢失的推送数。
 - 初始化日志、解冻失败和找不到 Hook 点等关键错误走本地非限频路径。

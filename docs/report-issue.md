@@ -179,4 +179,7 @@ FCM 连不上时，复现前后各导出一次报告，`pkts` 明显增加的规
 | “Google 核心包联网策略”中 GMS 为 `policy=4`（或 1、2） | GMS 被禁止全部（或部分）联网，见下文“流量管理里没有 Google 入口” |
 | 待机分组为 `40`，或 `google_restric_info` 为 `1` 但日志中没有 `restrict broadcast cleared` | ColorOS 17 的 Google 限制未被解除，需要 53-coloros-10 或更新版本 |
 | 日志中有 `hook error` 或 `Unsupported` | 某个 Hook 与当前固件不匹配，请在 Issue 中贴出这些行 |
+| “Doze 白名单”显示 GMS/GSF 不在白名单 | 系统框架作用域的 Doze 白名单 Hook 未生效，日志中应有 `Oplus Doze whitelist hook active` |
+| 深度睡眠记录中断网时间与 FCM 断开吻合，且 `disNetType = 4` | 按应用断网，模块会放行 GMS，日志中应有 `Oplus night network whitelist: added GMS` |
+| 深度睡眠记录中 `disNetType` 为 1、2 或 3 | 深度睡眠直接关闭了 Wi‑Fi / 移动数据，属于整机断网，模块无法阻止；可在设置中关闭“睡眠待机优化” |
 | 以上均正常，但 FCM Diagnostics 一直 disconnected | 网络问题（DNS 污染或端口被封），见上文国内网络说明 |
