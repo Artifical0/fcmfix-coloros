@@ -7,6 +7,8 @@ import com.kooritea.fcmfix.libxposed.XposedHelpers;
 import java.lang.reflect.Method;
 import java.util.List;
 
+import static com.kooritea.fcmfix.xposed.OplusHooks.describeMethod;
+
 /** Restores only the Google entries omitted by the ColorOS CN regional Doze list. */
 public class OplusDeviceIdleFix extends XposedModule {
 
@@ -174,16 +176,5 @@ public class OplusDeviceIdleFix extends XposedModule {
             if (arg instanceof List) return (List<String>) arg;
         }
         return null;
-    }
-
-    private static String describeMethod(Method method) {
-        StringBuilder result = new StringBuilder(method.getDeclaringClass().getName())
-                .append('#').append(method.getName()).append('(');
-        Class<?>[] types = method.getParameterTypes();
-        for (int i = 0; i < types.length; i++) {
-            if (i > 0) result.append(',');
-            result.append(types[i].getSimpleName());
-        }
-        return result.append("): ").append(method.getReturnType().getSimpleName()).toString();
     }
 }
