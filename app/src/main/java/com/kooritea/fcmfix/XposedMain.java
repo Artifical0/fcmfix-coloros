@@ -15,9 +15,13 @@ import io.github.libxposed.api.XposedModuleInterface;
 
 public class XposedMain extends io.github.libxposed.api.XposedModule {
 
+    private static boolean systemServer;
+    private static boolean batteryHooked;
+
     @Override
     public void onSystemServerStarting(SystemServerStartingParam param) {
         XposedBridge.init(this);
+        systemServer = true;
         XposedModule.setSelfPackageName("android");
 
         ClassLoader classLoader = param.getClassLoader();
@@ -60,7 +64,10 @@ public class XposedMain extends io.github.libxposed.api.XposedModule {
     public void onPackageReady(XposedModuleInterface.PackageReadyParam param) {
         XposedBridge.init(this);
 
-        if ("com.oplus.battery".equals(param.getPackageName()) && param.isFirstPackage()) {
+        // Battery runs in process com.oplus.athena, which the persistent Athena app (same system
+        // uid) starts first, so Battery is normally not that process's first package.
+        if ("com.oplus.battery".equals(param.getPackageName()) && !systemServer && !batteryHooked) {
+            batteryHooked = true;
             XposedModule.setSelfPackageName("com.oplus.battery");
             XposedBridge.log("[fcmfix] start hook com.oplus.battery GMS network policy");
             new OplusBatteryNetworkFix(param.getClassLoader());

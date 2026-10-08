@@ -60,8 +60,11 @@ ColorOS 的 `com.oplus.battery` 会在 Google 连通性探测失败时调用系�
 给 GMS、Play 商店或 ConfigUpdater 写入 `POLICY_REJECT_ALL`，即同时禁止 Wi-Fi 和
 移动数据。
 
-本模块拦截的是 `com.oplus.battery` 进程内针对指定 Google 核心 UID 的所有
+电池组件运行在 `com.oplus.athena` 进程中，与常驻的 Athena 共用（同为 system UID）。
+本模块拦截的是该进程内针对指定 Google 核心 UID 的所有
 `POLICY_REJECT_ALL` 写入，并改为 `POLICY_NONE`，不是仅 Hook 某一个 controller。
+53-coloros-13-rc3 之前，模块只在电池组件是进程中第一个载入的包时才生效，而该进程由 Athena 先启动，
+因此电池作用域中的 Hook 实际都没有生效，由系统框架中的兜底处理。
 不直接修改“设置/流量管理”进程中的规则；但如果某个 OTA 将手动设置也转交电池进程
 通过同一接口写入，该写入也可能被影响，需针对对应固件复查。
 

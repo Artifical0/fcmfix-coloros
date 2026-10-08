@@ -14,8 +14,8 @@ import static com.kooritea.fcmfix.xposed.OplusHooks.runHook;
 /**
  * ColorOS Battery's GoogleRestrictionController applies POLICY_REJECT_ALL when its
  * Google connectivity probe fails. This intercepts every matching Google UID reject-all
- * write inside com.oplus.battery, not exclusively that controller's call site.
- * Calls made directly by Settings/TrafficMonitor are outside this hook's process.
+ * write inside Battery's process (com.oplus.athena, shared with Athena), not exclusively that
+ * controller's call site. Calls made directly by Settings/TrafficMonitor are outside this process.
  */
 public class OplusBatteryNetworkFix extends XposedModule {
 
