@@ -31,6 +31,12 @@ body:
         - label: 已勾选“电池”（com.oplus.battery）
         - label: 修改作用域或更新后已重启
           required: true
+  - type: textarea
+    id: hooks
+    attributes:
+      label: Hook 状态
+      description: 53-coloros-13 起，点击 FCMFix 界面顶部的 Hook 状态，选“复制”后粘贴到这里
+      render: text
   - type: dropdown
     id: fcm
     attributes:

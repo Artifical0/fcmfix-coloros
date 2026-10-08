@@ -2,6 +2,7 @@ package com.kooritea.fcmfix;
 
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -11,7 +12,9 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.AttributeSet;
@@ -36,6 +39,7 @@ import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import io.github.libxposed.api.XposedInterface;
 import io.github.libxposed.service.XposedService;
 import io.github.libxposed.service.XposedServiceHelper;
 
@@ -51,6 +55,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
+import com.kooritea.fcmfix.util.HookStatus;
 import com.kooritea.fcmfix.util.IceboxUtils;
 
 public class MainActivity extends AppCompatActivity {
@@ -158,8 +163,14 @@ public class MainActivity extends AppCompatActivity {
         }
         StringBuilder text = new StringBuilder("模块状态：已激活");
         try {
+            // getApiVersion() is the newest API the framework supports; the module itself runs
+            // against the API it was built for (targetApiVersion in module.prop).
+            int frameworkApi = service.getApiVersion();
             text.append(" · ").append(service.getFrameworkName()).append(' ')
-                    .append(service.getFrameworkVersion()).append(" · API ").append(service.getApiVersion());
+                    .append(service.getFrameworkVersion()).append(" · API ").append(XposedInterface.LIB_API);
+            if (frameworkApi != XposedInterface.LIB_API) {
+                text.append("（框架支持 ").append(frameworkApi).append("）");
+            }
         } catch (Throwable e) {
             Log.w("updateModuleStatus", e.toString());
         }
@@ -181,6 +192,87 @@ public class MainActivity extends AppCompatActivity {
             status.setText(text);
             status.setTextColor(ContextCompat.getColor(this, R.color.statusWarning));
         }
+        queryHookStatus();
+    }
+
+    /**
+     * Ask the hooked processes which hook groups installed. system_server and Battery each add
+     * their own extras to this ordered broadcast; a process that never loaded the module (scope
+     * not ticked, or no reboot since) adds nothing.
+     */
+    private void queryHookStatus() {
+        TextView view = findViewById(R.id.hook_status);
+        if (view == null) return;
+        if (Build.VERSION.SDK_INT < 34) {
+            String text = "Hook 状态查询需要 Android 14 及以上";
+            view.setText(text);
+            view.setVisibility(View.VISIBLE);
+            return;
+        }
+        Intent query = new Intent(getPackageName() + HookStatus.QUERY_ACTION_SUFFIX);
+        Bundle options = android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle();
+        sendOrderedBroadcast(query, 0, null, null, new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                Bundle result = getResultExtras(false);
+                showHookStatus(view, result == null ? new Bundle() : result);
+            }
+        }, new Handler(Looper.getMainLooper()), null, null, options);
+    }
+
+    private static final String SYSTEM_PROCESS = "android";
+    private static final String BATTERY_PROCESS = "com.oplus.battery";
+
+    private void showHookStatus(TextView view, Bundle result) {
+        boolean warning = false;
+        StringBuilder text = new StringBuilder();
+        StringBuilder details = new StringBuilder();
+        String[][] processes = {{SYSTEM_PROCESS, "系统框架"}, {BATTERY_PROCESS, "电池"}};
+        for (String[] process : processes) {
+            List<String> active = result.getStringArrayList(process[0] + HookStatus.ACTIVE_SUFFIX);
+            List<String> failed = result.getStringArrayList(process[0] + HookStatus.FAILED_SUFFIX);
+            if (text.length() > 0) text.append(" · ");
+            text.append(process[1]).append("：");
+            details.append("【").append(process[1]).append("】\n");
+            if (active == null || failed == null) {
+                warning = true;
+                text.append("未加载");
+                details.append("未响应：模块未在该进程加载，请确认作用域已勾选并重启手机\n\n");
+                continue;
+            }
+            text.append(active.size()).append(" 项生效");
+            if (!failed.isEmpty()) {
+                warning = true;
+                text.append("，").append(failed.size()).append(" 项失配");
+            }
+            for (String name : failed) details.append("✗ ").append(name).append('\n');
+            for (String name : active) details.append("✓ ").append(name).append('\n');
+            details.append('\n');
+        }
+        if (result.containsKey(HookStatus.KEY_IGNORE_GMS_USER_SET)) {
+            boolean ignores = result.getBoolean(HookStatus.KEY_IGNORE_GMS_USER_SET);
+            details.append("电池组件声明 IgnoreGmsUserSet：").append(ignores ? "是" : "否")
+                    .append(ignores ? "（系统框架会丢弃开机后对 Google 核心服务的禁网规则）"
+                            : "（保留用户在流量管理中对 Google 应用的联网设置）");
+        }
+        text.append("（点击查看）");
+        if (result.containsKey(HookStatus.KEY_SYSTEM_READY) && !result.getBoolean(HookStatus.KEY_SYSTEM_READY)) {
+            text.append("\n解锁后 1 分钟内暂不放行推送");
+        }
+        view.setText(text);
+        view.setTextColor(ContextCompat.getColor(this, warning ? R.color.statusWarning : R.color.statusOk));
+        view.setVisibility(View.VISIBLE);
+        String report = details.toString().trim();
+        view.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setTitle("Hook 状态")
+                .setMessage(report)
+                .setPositiveButton("复制", (dialog, which) -> {
+                    android.content.ClipboardManager clipboard = getSystemService(android.content.ClipboardManager.class);
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("FCMFix Hook 状态", report));
+                    Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("关闭", null)
+                .show());
     }
 
     private class AppInfo {

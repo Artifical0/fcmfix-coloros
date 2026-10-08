@@ -4,11 +4,15 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 
 import com.kooritea.fcmfix.libxposed.XposedHelpers;
+import com.kooritea.fcmfix.util.HookStatus;
 
 import java.lang.reflect.Method;
 
 /** Reflection helpers shared by the ColorOS system_server hooks. */
 final class OplusHooks {
+    /** Hook groups installed in this process; reported to the module app on request. */
+    static final HookStatus STATUS = new HookStatus();
+
     private OplusHooks() {
     }
 
@@ -16,12 +20,18 @@ final class OplusHooks {
         void run() throws Throwable;
     }
 
-    /** Installs one hook group; a firmware mismatch is logged and leaves the system behavior. */
+    /**
+     * Installs one hook group; a firmware mismatch is logged and leaves the system behavior.
+     * The result is recorded for the in-app status, so a group must throw when nothing hooked.
+     */
     static void runHook(String name, HookAction action) {
         try {
             action.run();
+            STATUS.recordActive(name);
         } catch (Throwable e) {
-            XposedModule.printLog("hook error " + name + ": " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            String reason = e.getClass().getSimpleName() + ": " + e.getMessage();
+            STATUS.recordFailed(name, reason);
+            XposedModule.printLog("hook error " + name + ": " + reason);
         }
     }
 

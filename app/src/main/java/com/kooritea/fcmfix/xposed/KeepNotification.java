@@ -7,15 +7,13 @@ import com.kooritea.fcmfix.libxposed.XC_MethodHook;
 import com.kooritea.fcmfix.libxposed.XposedBridge;
 import com.kooritea.fcmfix.libxposed.XposedHelpers;
 
+import static com.kooritea.fcmfix.xposed.OplusHooks.runHook;
+
 public class KeepNotification extends XposedModule{
 
     public KeepNotification(ClassLoader classLoader) {
         super(classLoader);
-        try {
-            this.startHook();
-        } catch (Throwable e) {
-            printLog("No Such Method com.android.server.notification.NotificationManagerService.cancelAllNotificationsInt");
-        }
+        runHook("NotificationManagerService#cancelAllNotificationsInt", this::startHook);
     }
     
     protected void startHook() throws NoSuchMethodError, XposedHelpers.ClassNotFoundError {

@@ -61,6 +61,16 @@
                 android:text="@string/status_connecting"
                 android:textColor="@color/textSecondary"
                 android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/hook_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:background="?android:attr/selectableItemBackground"
+                android:textColor="@color/textSecondary"
+                android:textSize="12sp"
+                android:visibility="gone" />
         </LinearLayout>
     </LinearLayout>
 

@@ -24,25 +24,15 @@ import com.kooritea.fcmfix.util.IceboxUtils;
 import com.kooritea.fcmfix.util.FcmTrust;
 import com.kooritea.fcmfix.util.XposedUtils;
 
+import static com.kooritea.fcmfix.xposed.OplusHooks.runHook;
+
 public class BroadcastFix extends XposedModule {
 
     public BroadcastFix(ClassLoader classLoader) {
         super(classLoader);
-        try{
-            this.startHookBroadcastEntryPoints();
-        }catch (Throwable e) {
-            printLog("hook error broadcast entry point:" + e.getMessage());
-        }
-        try{
-            this.startHookBroadcastIntentLocked();
-        }catch (Throwable e) {
-            printLog("hook error broadcastIntentLocked:" + e.getMessage());
-        }
-        try{
-            this.deoptimizeBroadcastCallers();
-        }catch (Throwable e) {
-            printLog("hook error broadcast deoptimize:" + e.getMessage());
-        }
+        runHook("broadcast entry point", this::startHookBroadcastEntryPoints);
+        runHook("broadcastIntentLocked", this::startHookBroadcastIntentLocked);
+        runHook("broadcast deoptimize", this::deoptimizeBroadcastCallers);
 //        try{
 //            this.startHookScheduleResultTo();
 //        }catch (Throwable e) {
@@ -90,6 +80,7 @@ public class BroadcastFix extends XposedModule {
             // AMS delegates to BroadcastController; do not install a second entry there.
             if (hookCount > 0) break;
         }
+        if (hookCount == 0) throw new NoSuchMethodError("broadcastIntentWithFeature(Intent)");
         printLog("broadcast entry hooks active: " + hookCount);
     }
 
@@ -136,10 +127,9 @@ public class BroadcastFix extends XposedModule {
         }
 
         if (hookCount == 0) {
-            printLog("broadcastIntentLocked hook 位置查找失败，fcmfix将不会工作。");
-        } else {
-            printLog("broadcastIntentLocked hooks active: " + hookCount);
+            throw new NoSuchMethodError("broadcastIntentLocked hook 位置查找失败，fcmfix将不会工作。");
         }
+        printLog("broadcastIntentLocked hooks active: " + hookCount);
     }
 
     /**
@@ -164,6 +154,7 @@ public class BroadcastFix extends XposedModule {
                 if (callers.contains(method.getName()) && XposedBridge.deoptimize(method)) count++;
             }
         }
+        if (count == 0) throw new IllegalStateException("no broadcast caller deoptimized");
         printLog("broadcast callers deoptimized: " + count);
     }
 

@@ -8,6 +8,8 @@ FCMFix 的日志写在系统 logcat 中，标签为 `fcmfix`，不在 LSPosed �
 - LSPosed 中 FCMFix 同时勾选了 **系统框架** 和 **电池** 两个作用域，改动后已重启；
 - 只启用了一个 FCMFix；
 - 目标应用已加入 FCMFix 允许列表，应用自身的通知权限已打开；
+- FCMFix 界面顶部的 Hook 状态中，系统框架和电池都没有显示“未加载”或“失配”。“未加载”通常是作用域未勾选或改动后没有重启；
+  “失配”说明某个 Hook 与当前固件不匹配，点击后可以看到具体是哪一项；
 - 打开 FCMFix →“打开 FCM Diagnostics”，查看连接状态。
 
 **国内网络说明**：FCMFix 修复的是 GMS 收到消息之后被 ColorOS 拦截的问题，不能让 GMS 连上 FCM 服务器。
@@ -165,6 +167,7 @@ FCM 连不上时，复现前后各导出一次报告，`pkts` 明显增加的规
 ## 3. 提交时附上
 
 - 上面两份报告；
+- Hook 状态：点击 FCMFix 界面顶部的 Hook 状态，选“复制”后粘贴到 Issue 中；
 - FCM Diagnostics 截图；
 - LSPosed 中 FCMFix 作用域截图；
 - 网络环境：Wi‑Fi 或移动数据，是否使用代理；

@@ -9,6 +9,8 @@ import com.kooritea.fcmfix.libxposed.XposedHelpers;
 
 import java.lang.reflect.Method;
 
+import static com.kooritea.fcmfix.xposed.OplusHooks.runHook;
+
 /**
  * ColorOS Battery's GoogleRestrictionController applies POLICY_REJECT_ALL when its
  * Google connectivity probe fails. This intercepts every matching Google UID reject-all
@@ -36,30 +38,10 @@ public class OplusBatteryNetworkFix extends XposedModule {
 
     public OplusBatteryNetworkFix(ClassLoader classLoader) {
         super(classLoader);
-        try {
-            startHookGoogleNetworkPolicy();
-        } catch (Throwable e) {
-            printLog("hook error Oplus Battery GMS network policy: "
-                    + e.getClass().getSimpleName() + ": " + e.getMessage());
-        }
-        try {
-            startHookGoogleRestrictBroadcast();
-        } catch (Throwable e) {
-            printLog("hook error Oplus Battery Google restrict broadcast: "
-                    + e.getClass().getSimpleName() + ": " + e.getMessage());
-        }
-        try {
-            startHookIgnoredUserChange();
-        } catch (Throwable e) {
-            printLog("hook error Oplus Battery GMS user-change flag: "
-                    + e.getClass().getSimpleName() + ": " + e.getMessage());
-        }
-        try {
-            startHookDeepSleepNetworkWhitelist();
-        } catch (Throwable e) {
-            printLog("hook error Oplus Battery deep-sleep network whitelist: "
-                    + e.getClass().getSimpleName() + ": " + e.getMessage());
-        }
+        runHook("Oplus Battery GMS network policy", this::startHookGoogleNetworkPolicy);
+        runHook("Oplus Battery Google restrict broadcast", this::startHookGoogleRestrictBroadcast);
+        runHook("Oplus Battery GMS user-change flag", this::startHookIgnoredUserChange);
+        runHook("Oplus Battery deep-sleep network whitelist", this::startHookDeepSleepNetworkWhitelist);
     }
 
     /**

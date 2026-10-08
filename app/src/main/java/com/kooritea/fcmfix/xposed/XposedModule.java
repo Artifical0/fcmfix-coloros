@@ -18,6 +18,7 @@ import android.util.Log;
 import com.kooritea.fcmfix.util.FcmTrust;
 import com.kooritea.fcmfix.util.ConfigSnapshot;
 import com.kooritea.fcmfix.util.DiagnosticLogger;
+import com.kooritea.fcmfix.util.HookStatus;
 import com.kooritea.fcmfix.util.OplusAttribution;
 import java.lang.reflect.Method;
 
@@ -35,6 +36,7 @@ import static android.content.Context.NOTIFICATION_SERVICE;
 public abstract class XposedModule {
     protected static final String MODULE_PACKAGE_NAME = "io.github.artifical0.fcmfix.coloros";
     protected static final String ACTION_UPDATE_CONFIG = MODULE_PACKAGE_NAME + ".update.config";
+    private static final String ACTION_QUERY_STATUS = MODULE_PACKAGE_NAME + HookStatus.QUERY_ACTION_SUFFIX;
     private static String selfPackageName = "UNKNOWN";
 
     protected final ClassLoader classLoader;
@@ -219,12 +221,15 @@ public abstract class XposedModule {
 
             IntentFilter updateConfigIntentFilter = new IntentFilter();
             updateConfigIntentFilter.addAction(ACTION_UPDATE_CONFIG);
+            updateConfigIntentFilter.addAction(ACTION_QUERY_STATUS);
             if (Build.VERSION.SDK_INT >= 34) {
                 context.registerReceiver(new BroadcastReceiver() {
                     public void onReceive(Context context, Intent intent) {
                         String action = intent.getAction();
                         if (ACTION_UPDATE_CONFIG.equals(action) && isConfigSender(this)) {
                             onUpdateConfig();
+                        } else if (ACTION_QUERY_STATUS.equals(action) && isOrderedBroadcast() && isConfigSender(this)) {
+                            setResultExtras(addHookStatus(getResultExtras(true)));
                         }
                     }
                 }, updateConfigIntentFilter, Context.RECEIVER_EXPORTED);
@@ -264,6 +269,17 @@ public abstract class XposedModule {
 
     protected boolean isFCMAction(String action) {
         return com.kooritea.fcmfix.util.FcmTrust.isAction(action);
+    }
+
+    private static Bundle addHookStatus(Bundle result) {
+        String process = getSelfPackageName();
+        result.putStringArrayList(process + HookStatus.ACTIVE_SUFFIX, OplusHooks.STATUS.active());
+        result.putStringArrayList(process + HookStatus.FAILED_SUFFIX, OplusHooks.STATUS.failed());
+        if ("android".equals(process)) {
+            result.putBoolean(HookStatus.KEY_SYSTEM_READY, isBootComplete);
+            result.putBoolean(HookStatus.KEY_IGNORE_GMS_USER_SET, OplusBatteryNetworkFix.batteryIgnoresGmsUserSet());
+        }
+        return result;
     }
 
     private static boolean isConfigSender(BroadcastReceiver receiver) {

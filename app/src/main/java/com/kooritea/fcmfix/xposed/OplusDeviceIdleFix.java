@@ -8,6 +8,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 import static com.kooritea.fcmfix.xposed.OplusHooks.describeMethod;
+import static com.kooritea.fcmfix.xposed.OplusHooks.runHook;
 
 /** Restores only the Google entries omitted by the ColorOS CN regional Doze list. */
 public class OplusDeviceIdleFix extends XposedModule {
@@ -26,24 +27,9 @@ public class OplusDeviceIdleFix extends XposedModule {
 
     public OplusDeviceIdleFix(ClassLoader classLoader) {
         super(classLoader);
-        try {
-            startHook();
-        } catch (Throwable e) {
-            printLog("hook error OplusDeviceIdleFix: "
-                    + e.getClass().getSimpleName() + ": " + e.getMessage());
-        }
-        try {
-            startHookGoogleAlarmRestrict();
-        } catch (Throwable e) {
-            printLog("hook error Oplus Google alarm restrict: "
-                    + e.getClass().getSimpleName() + ": " + e.getMessage());
-        }
-        try {
-            startHookDeepSleepAlarm();
-        } catch (Throwable e) {
-            printLog("hook error Oplus deep-sleep alarm: "
-                    + e.getClass().getSimpleName() + ": " + e.getMessage());
-        }
+        runHook("Doze whitelist", this::startHook);
+        runHook("Google alarm restrict", this::startHookGoogleAlarmRestrict);
+        runHook("deep-sleep alarm", this::startHookDeepSleepAlarm);
     }
 
     /**
