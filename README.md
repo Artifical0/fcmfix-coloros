@@ -70,6 +70,7 @@ GMS 和应用之间。本模块解除这一段的限制，并阻止 ColorOS 切�
 
 - **模块状态**：显示模块是否已激活、LSPosed 版本，并提示缺少的作用域；
 - **搜索与筛选**：按应用名或包名搜索，筛选“全部 / 包含 FCM / 已允许”；
+- **目标无响应时代发提示通知**：FCM 未能唤醒目标应用时，代为发一条提示通知（默认关闭）；
 - **全选包含 FCM 的应用**：按扫描结果批量加入，建议之后手动检查；
 - **阻止应用停止时自动清除通知**：保留应用已有的通知；
 - **允许唤醒被冰箱冻结的应用**：尝试通过 Ice Box SDK 激活（默认关闭），本条消息可能无法送达，需要后续消息或应用主动同步；
@@ -81,6 +82,21 @@ GMS 和应用之间。本模块解除这一段的限制，并阻止 ColorOS 切�
 - `QUERY_ALL_PACKAGES` 仅用于扫描本机包含 FCM 接收组件的应用；
 - 这是 system_server 级别的 Hook，安装前请保留进入安全模式或禁用 LSPosed 模块的恢复手段；
   Hook 与固件不匹配时会记录 `hook error` 并保持系统原行为。
+
+## 与上游 kooritea/fcmfix 的区别
+
+| | 上游 [kooritea/fcmfix](https://github.com/kooritea/fcmfix) | FCMFix ColorOS |
+| --- | --- | --- |
+| 目标系统 | Android 10–15 通用，附加 MIUI / HyperOS 适配 | ColorOS 16 / 17 国行（Android 16 / 17） |
+| 作用域 | 系统框架；MIUI / HyperOS 可选“电量和性能” | 系统框架 + 电池（`com.oplus.battery`） |
+| 包名 | `com.kooritea.fcmfix` | `io.github.artifical0.fcmfix.coloros`，可与上游同时安装，但不要同时启用 |
+| 唤醒已停止的应用 | 支持 | 支持，并只放行来自真实 GMS 的 FCM 广播 |
+| ColorOS 后台限制 | 自启动、广播代理、唤醒锁代理、GMS 受限状态 | 另外处理应用分类、bind / service、冷启动拦截、云控名单、关联启动，以及推送后的二次冻结和断网 |
+| Google 核心服务联网 | 不处理 | 阻止电池组件禁网（含开机解锁后的探测）、闹钟降级和受限待机分组，补 Doze 白名单，深度睡眠时保持 GMS 联网 |
+| MIUI / HyperOS 功能 | 支持 | 代码保留，未测试 |
+| 应用界面 | 允许列表与选项 | 另有模块状态、缺少作用域提示、搜索与筛选 |
+
+如果不是 ColorOS 国行，请使用上游版本。
 
 ## 文档
 
