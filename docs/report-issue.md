@@ -40,7 +40,7 @@ FCM Diagnostics 中的事件都带时间戳，判断的关键是断开发生的�
 如果之后一直显示未连接，说明解锁后的重连失败了。ColorOS 电池服务会在开机完成（首次解锁）后约 5 秒探测 Google 连通性，
 探测失败时会把 GMS、GSF、Play 商店设为禁止联网（策略 4）。此时代理软件通常还没启动，在国内网络下探测基本都会失败。
 请检查模块是否勾选了“系统框架”和“电池”作用域，并用下文“排除系统限制”中的命令查看 GMS 的联网策略；
-53-coloros-12-rc2 起，模块也会在系统框架中拦截这条禁网规则。
+53-coloros-12 起，模块也会在系统框架中拦截这条禁网规则。
 
 ### 测试网络连通性
 
@@ -177,6 +177,6 @@ FCM 连不上时，复现前后各导出一次报告，`pkts` 明显增加的规
 | 报告内容 | 含义 |
 | --- | --- |
 | “Google 核心包联网策略”中 GMS 为 `policy=4`（或 1、2） | GMS 被禁止全部（或部分）联网，见下文“流量管理里没有 Google 入口” |
-| 待机分组为 `40`，或 `google_restric_info` 为 `1` 但日志中没有 `restrict broadcast cleared` | ColorOS 17 的 Google 限制未被解除，需要 53-coloros-10-rc2 或更新版本 |
+| 待机分组为 `40`，或 `google_restric_info` 为 `1` 但日志中没有 `restrict broadcast cleared` | ColorOS 17 的 Google 限制未被解除，需要 53-coloros-10 或更新版本 |
 | 日志中有 `hook error` 或 `Unsupported` | 某个 Hook 与当前固件不匹配，请在 Issue 中贴出这些行 |
 | 以上均正常，但 FCM Diagnostics 一直 disconnected | 网络问题（DNS 污染或端口被封），见上文国内网络说明 |

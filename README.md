@@ -104,6 +104,7 @@ GMS 和应用之间。本模块解除这一段的限制，并阻止 ColorOS 切�
 - [如何提交问题与日志](docs/report-issue.md)
 - [一加 15 ColorOS 17 Hook 核对](docs/oneplus15-coloros17-fcm-analysis.md)
 - [一加 15 ColorOS 16 国行/国际版差分与 Hook 分析](docs/oneplus15-coloros16-fcm-analysis.md)
+- [开发说明](docs/development.md)：信任边界、日志限频、构建与发布流程
 - 上游项目：[kooritea/fcmfix](https://github.com/kooritea/fcmfix)
 
 每个版本的 APK SHA-256 见对应 GitHub Release 说明。
