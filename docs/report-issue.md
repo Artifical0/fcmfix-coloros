@@ -126,6 +126,22 @@ su -c 'settings put global oplus_user_change_gms_network_control 0'
 
 重启后再次查看，GMS 应为 `policy=0`。
 
+### 防火墙链
+
+ColorOS 17 的按应用断网都挂在 `fw_INPUT` / `fw_OUTPUT` 两条链上：每条 REJECT/DROP 规则匹配一个 BPF 程序，
+被限制的 UID 记录在对应的 BPF 表中，规则本身不出现 UID。报告的“防火墙链”一栏列出这些规则及命中次数（`pkts`），
+程序名对应的功能：
+
+| BPF 程序名包含 | 系统功能 |
+| --- | --- |
+| `reject_wlan_uid`、`drop_cell_uid`、`reject_qcom_uid` | 流量管理联网策略（含电池服务探测失败后的 Google 禁网） |
+| `netdisable` | 深度睡眠按应用断网 |
+| `hans` | 应用冻结时断网 |
+
+FCM 连不上时，复现前后各导出一次报告，`pkts` 明显增加的规则就是拦截来源。
+“ColorOS Google 拦截规则清理”一类模块会删除这两条链中的全部 REJECT/DROP 规则，使上述限制对所有应用失效；
+排查时请先停用该模块并重启，否则这一栏看不到被删除的规则。
+
 ## 2. 导出报告（需要 Root）
 
 1. 下载 [`collect-report.sh`](../scripts/collect-report.sh)（点击后选“Download raw file”），保存到手机的 `Download` 目录。

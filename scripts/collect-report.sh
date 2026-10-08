@@ -42,6 +42,20 @@ section() { echo; echo "== $1"; }
   section "google_restric_info（1 表示系统判定 Google 受限）"
   settings get secure google_restric_info
 
+  # ColorOS 17 liboplusNetd hangs its per-UID blocks on fw_INPUT/fw_OUTPUT as REJECT/DROP rules that
+  # match pinned BPF programs; the UIDs live in BPF maps. The pkts column shows which block is firing.
+  section "防火墙链（reject_wlan_uid / drop_cell_uid / reject_qcom_uid 为流量管理联网策略，netdisable 为深度睡眠断网，hans 为冻结断网）"
+  cleaner=/data/adb/modules/google-services-firewall-cleaner
+  if [ -d "$cleaner" ]; then
+    if [ -f "$cleaner/disable" ]; then echo "拦截规则清理模块：已安装，已停用"; else echo "拦截规则清理模块：已安装，已启用（下列规则可能已被删除）"; fi
+  fi
+  for cmd in iptables ip6tables; do
+    for chain in fw_INPUT fw_OUTPUT; do
+      echo "-- $cmd $chain"
+      $cmd -w -t filter -nvxL "$chain" 2>&1
+    done
+  done
+
   section "FCMFix / ColorOS Google 限制日志"
   logcat -d | grep -iE "fcmfix|GoogleController|OplusGoogle"
 } > "$OUT" 2>&1
