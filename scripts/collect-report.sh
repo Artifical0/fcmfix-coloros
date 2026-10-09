@@ -23,7 +23,9 @@ report() {
   echo "model=$(getprop ro.product.model)"
 
   section "模块版本"
-  dumpsys package "$MODULE" | grep -m1 versionName || echo "未安装 $MODULE"
+  # grep -m1 would close the pipe early and make dumpsys print "Broken pipe".
+  version=$(dumpsys package "$MODULE" | grep versionName)
+  if [ -n "$version" ]; then echo "$version" | sed -n 1p; else echo "未安装 $MODULE"; fi
 
   # ColorOS keeps these in its own networking_control service (/data/oplus/common/networkingcontrolpolicy.xml),
   # not in AOSP netpolicy. Transaction 2 is getUidPolicy(uid).
@@ -32,7 +34,8 @@ report() {
     uid=$(pm list packages -U "$p" | grep "^package:$p " | grep -o 'uid:[0-9]*' | cut -d: -f2)
     if [ -z "$uid" ]; then echo "$p 未安装"; continue; fi
     raw=$(service call networking_control 2 i32 "$uid" 2>&1)
-    hex=$(echo "$raw" | sed -n 's/.*Parcel(\([0-9a-f]*\) \([0-9a-f]*\).*/\1 \2/p')
+    # Some builds print a tab after "Parcel(": Result: Parcel(<tab>00000000 00000004   '........')
+    hex=$(echo "$raw" | sed -n 's/.*Parcel([[:space:]]*\([0-9a-f]\{8\}\)[[:space:]]\{1,\}\([0-9a-f]\{8\}\).*/\1 \2/p')
     if [ "${hex%% *}" = "00000000" ]; then
       echo "$p uid=$uid policy=$(printf '%d' "0x${hex##* }")"
     else
