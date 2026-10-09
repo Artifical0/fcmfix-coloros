@@ -1,8 +1,9 @@
 #!/system/bin/sh
-# FCMFix 问题报告收集脚本。需要 Root：su -c sh /sdcard/Download/collect-report.sh [输出文件名]
+# FCMFix 问题报告收集脚本。需要 Root：su -c sh /sdcard/Download/collect-report.sh [输出文件名] [目标应用包名]
 # 只读取系统状态和日志，不修改任何设置。
 
 OUT="/sdcard/Download/${1:-fcmfix-report.txt}"
+PKG="$2"
 GMS=com.google.android.gms
 MODULE=io.github.artifical0.fcmfix.coloros
 
@@ -74,6 +75,23 @@ section() { echo; echo "== $1"; }
 
   section "FCMFix / ColorOS Google 限制日志"
   logcat -d | grep -iE "fcmfix|GoogleController|OplusGoogle"
+
+  # For "GMS sent the broadcast but no notification": whether the target was started, frozen or
+  # killed, and whether its notifications or channels are turned off.
+  if [ -n "$PKG" ]; then
+    section "目标应用 $PKG"
+    dumpsys package "$PKG" | grep -E "versionName|User 0:|POST_NOTIFICATIONS" || echo "未安装 $PKG"
+    echo "standby-bucket=$(am get-standby-bucket "$PKG")"
+    echo "pid=$(pidof "$PKG")"
+    echo "-- 通知设置（importance=0 或 NONE 表示已关闭）"
+    dumpsys notification | awk -v p="AppSettings: $PKG (" '
+      index($0, p) { on = 1; print; next }
+      on && /AppSettings: / { exit }
+      on { print }' | head -n 80
+
+    section "目标应用相关系统日志"
+    logcat -d -b main,system,events,crash | grep -F "$PKG" | tail -n 300
+  fi
 } > "$OUT" 2>&1
 
 echo "已保存到 $OUT"

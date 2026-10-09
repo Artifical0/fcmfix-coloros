@@ -157,8 +157,11 @@ FCM 连不上时，复现前后各导出一次报告，`pkts` 明显增加的规
 3. **复现问题后**再执行一次，例如熄屏等待 10 分钟，再发一条测试消息：
 
    ```sh
-   su -c sh /sdcard/Download/collect-report.sh fcmfix-report-issue.txt
+   su -c sh /sdcard/Download/collect-report.sh fcmfix-report-issue.txt 应用包名
    ```
+
+   把“应用包名”换成收不到推送的应用，例如 `org.telegram.messenger`。报告会多出这个应用的通知设置、
+   进程状态和相关系统日志，用来判断 GMS 发出消息之后，应用有没有被拉起、通知有没有被系统拦下。
 
 两份报告都保存在 `Download` 目录。脚本只读取系统状态和日志，不修改任何设置。
 
@@ -186,3 +189,4 @@ FCM 连不上时，复现前后各导出一次报告，`pkts` 明显增加的规
 | 深度睡眠记录中断网时间与 FCM 断开吻合，且 `disNetType = 4` | 按应用断网，模块会放行 GMS，日志中应有 `Oplus night network whitelist: added GMS` |
 | 深度睡眠记录中 `disNetType` 为 1、2 或 3 | 深度睡眠直接关闭了 Wi‑Fi / 移动数据，属于整机断网，模块无法阻止；可在设置中关闭“睡眠待机优化” |
 | 以上均正常，但 FCM Diagnostics 一直 disconnected | 网络问题（DNS 污染或端口被封），见上文国内网络说明 |
+| 日志中有 `FCM trusted sender`（GMS 已发出），但没有通知 | 看“目标应用”一栏：`POST_NOTIFICATIONS` 为 `granted=false`、应用 `importance` 为 `0` 或 `NONE`、渠道 `mImportance=0` 表示通知被关闭；`stopped=true` 且相关日志中没有 `Start proc` 表示应用未被拉起，请附上报告提交 Issue |
