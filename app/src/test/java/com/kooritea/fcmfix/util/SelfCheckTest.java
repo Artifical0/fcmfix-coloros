@@ -36,4 +36,24 @@ public class SelfCheckTest {
         assertNull(SelfCheck.appBucket(SelfCheck.UNKNOWN));
         assertEquals(SelfCheck.Level.WARN, SelfCheck.appBucket(45).level);
     }
+    @Test public void durationRoundsDownToMinutes() {
+        assertEquals("不到 1 分钟", SelfCheck.duration(59_000));
+        assertEquals("5 分钟", SelfCheck.duration(5 * 60_000 + 30_000));
+        assertEquals("2 小时 3 分钟", SelfCheck.duration(123 * 60_000));
+        assertEquals("不到 1 分钟", SelfCheck.duration(-1));
+    }
+    @Test public void fcmConnectionVerdicts() {
+        long start = 1_000_000;
+        SelfCheck.Verdict connected = SelfCheck.fcmConnection(SelfCheck.FCM_CONNECTED, "1.2.3.4:5228",
+                start + 600_000, 2, start, start + 600_000 + 30 * 60_000);
+        assertEquals(SelfCheck.Level.OK, connected.level);
+        assertTrue(connected.text.contains("已持续 30 分钟"));
+        assertTrue(connected.text.contains("断开 2 次"));
+        SelfCheck.Verdict sinceBoot = SelfCheck.fcmConnection(SelfCheck.FCM_CONNECTED, "1.2.3.4:5228",
+                start + 1000, 0, start, start + 3_600_000);
+        assertTrue(sinceBoot.text.contains("开始监测时已连接"));
+        assertEquals(SelfCheck.Level.WARN, SelfCheck.fcmConnection(SelfCheck.FCM_NONE, null, 0, 0, start, start).level);
+        assertEquals(SelfCheck.Level.WARN, SelfCheck.fcmConnection(SelfCheck.FCM_CONNECTING, "x", 0, 0, start, start).level);
+        assertEquals(SelfCheck.Level.UNKNOWN, SelfCheck.fcmConnection(SelfCheck.UNKNOWN, null, 0, 0, start, start).level);
+    }
 }

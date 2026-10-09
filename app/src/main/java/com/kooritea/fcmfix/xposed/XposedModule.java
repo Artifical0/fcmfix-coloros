@@ -239,6 +239,7 @@ public abstract class XposedModule {
             }
 
             if ("android".equals(getSelfPackageName())) {
+                FcmConnectionMonitor.start(context);
                 IntentFilter packageFilter = new IntentFilter();
                 packageFilter.addAction(Intent.ACTION_PACKAGE_ADDED);
                 packageFilter.addAction(Intent.ACTION_PACKAGE_CHANGED);

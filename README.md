@@ -91,6 +91,7 @@ FCMFix 顶部的状态卡片显示“一切正常”；
 ## 权限与风险
 
 - APK 不申请 `INTERNET` 权限，不通过开发者服务器中转任何消息；导出的报告只保存在本机，由你决定是否分享；
+- `ACCESS_NETWORK_STATE`（查看网络连接，安装时自动授予）用于自查时间线记录网络切换，不能联网；
 - `QUERY_ALL_PACKAGES` 仅用于扫描本机包含 FCM 接收组件的应用；
 - 这是 system_server 级别的 Hook，安装前请保留进入安全模式或禁用 LSPosed 模块的恢复手段；
   Hook 与固件不匹配时会记录 `hook error` 并保持系统原行为。

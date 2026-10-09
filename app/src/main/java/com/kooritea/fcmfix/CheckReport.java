@@ -247,6 +247,13 @@ final class CheckReport {
             add("GMS 联网策略", SelfCheck.gmsPolicy(status.getInt(SelfCheck.KEY_GMS_POLICY, SelfCheck.UNKNOWN)));
             add("GMS 待机分组", SelfCheck.gmsBucket(status.getInt(SelfCheck.KEY_GMS_BUCKET, SelfCheck.UNKNOWN)));
             add("GMS 电池优化白名单", SelfCheck.gmsDoze(status.getInt(SelfCheck.KEY_GMS_DOZE, SelfCheck.UNKNOWN)));
+            add("FCM 连接（系统框架检测）", SelfCheck.fcmConnection(
+                    status.getInt(SelfCheck.KEY_FCM_STATE, SelfCheck.UNKNOWN),
+                    status.getString(SelfCheck.KEY_FCM_REMOTE),
+                    status.getLong(SelfCheck.KEY_FCM_SINCE),
+                    status.getInt(SelfCheck.KEY_FCM_DROPS),
+                    status.getLong(SelfCheck.KEY_FCM_MONITOR_START),
+                    System.currentTimeMillis()));
         }
         rows.add(new Row(Level.INFO, "FCM 连接状态", "点击打开 FCM Diagnostics，查看是否为 connected。"
                 + "亮屏时也一直 disconnected 通常是网络问题（DNS 被污染或 5228 端口被封），模块无法解决",
@@ -254,6 +261,7 @@ final class CheckReport {
 
         if (systemAnswered) {
             addAppRows(status);
+            addEventRows(status);
             section("系统信息（反馈问题时附上）");
             StringBuilder info = new StringBuilder()
                     .append("FCMFix ").append(versionName())
@@ -383,6 +391,25 @@ final class CheckReport {
         add(Level.INFO, "推送记录说明",
                 "“最近一次推送”表示 GMS 已把消息交给该应用。收到了推送却没有弹出通知，问题通常在应用自己的通知设置或应用本身",
                 null);
+    }
+
+    /** Newest first; the page shows the latest 40, the copied text all of them. */
+    private void addEventRows(Bundle status) {
+        ArrayList<String> events = status.getStringArrayList(SelfCheck.KEY_EVENTS);
+        if (events == null) return;
+        section("最近事件（开机以来，最新在上）");
+        if (events.isEmpty()) {
+            add(Level.INFO, "暂无事件", "熄屏、深度 Doze、网络切换、FCM 连接变化和收到推送会记录在这里", null);
+            return;
+        }
+        List<String> newestFirst = new ArrayList<>(events);
+        Collections.reverse(newestFirst);
+        List<String> shown = newestFirst.subList(0, Math.min(40, newestFirst.size()));
+        Row row = add(Level.INFO, "时间线", String.join("\n", shown),
+                "FCM 断开前后是否刚熄屏、进入深度 Doze 或切换网络，通常能说明断开的原因");
+        if (newestFirst.size() > shown.size()) {
+            row.copyExtra = String.join("\n  ", newestFirst.subList(shown.size(), newestFirst.size()));
+        }
     }
 
     static String label(PackageManager pm, String packageName) {

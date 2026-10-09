@@ -41,6 +41,7 @@ final class SelfCheckCollector {
 
     static void recordPush(String packageName) {
         PUSHES.record(packageName, System.currentTimeMillis());
+        FcmConnectionMonitor.event("推送 → " + packageName);
     }
 
     static void collect(Context context, ConfigSnapshot config, Bundle out) {
@@ -56,6 +57,14 @@ final class SelfCheckCollector {
         out.putInt(SelfCheck.KEY_GMS_POLICY, gmsUid < 0 ? SelfCheck.UNKNOWN : networkPolicy(gmsUid));
         out.putInt(SelfCheck.KEY_GMS_BUCKET, standbyBucket(context, GMS));
         out.putInt(SelfCheck.KEY_GMS_DOZE, dozeWhitelisted(context, GMS));
+
+        FcmConnectionMonitor.sample();
+        out.putInt(SelfCheck.KEY_FCM_STATE, FcmConnectionMonitor.state());
+        out.putString(SelfCheck.KEY_FCM_REMOTE, FcmConnectionMonitor.remote());
+        out.putLong(SelfCheck.KEY_FCM_SINCE, FcmConnectionMonitor.since());
+        out.putInt(SelfCheck.KEY_FCM_DROPS, FcmConnectionMonitor.drops());
+        out.putLong(SelfCheck.KEY_FCM_MONITOR_START, FcmConnectionMonitor.startedAt());
+        out.putStringArrayList(SelfCheck.KEY_EVENTS, FcmConnectionMonitor.events());
 
         ContentResolver resolver = context.getContentResolver();
         ArrayList<String> settings = new ArrayList<>();

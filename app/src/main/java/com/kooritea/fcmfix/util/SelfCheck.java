@@ -19,6 +19,17 @@ public final class SelfCheck {
     public static final String KEY_SETTINGS = "check.settings";
     /** Packages system_server lets through, each with an APP_PREFIX + package Bundle. */
     public static final String KEY_APPS = "check.apps";
+    /** GMS's FCM socket as system_server saw it: FCM_* state, remote, first-seen time, drops. */
+    public static final String KEY_FCM_STATE = "check.fcmState";
+    public static final String KEY_FCM_REMOTE = "check.fcmRemote";
+    public static final String KEY_FCM_SINCE = "check.fcmSince";
+    public static final String KEY_FCM_DROPS = "check.fcmDrops";
+    public static final String KEY_FCM_MONITOR_START = "check.fcmMonitorStart";
+    /** Timeline lines, oldest first: screen, deep Doze, network, FCM connection, pushes. */
+    public static final String KEY_EVENTS = "check.events";
+    public static final int FCM_NONE = 0;
+    public static final int FCM_CONNECTING = 1;
+    public static final int FCM_CONNECTED = 2;
     public static final String APP_PREFIX = "check.app.";
 
     public static final String APP_AUTO = "auto";
@@ -108,6 +119,34 @@ public final class SelfCheck {
                     "这些类别里的消息不会弹出，可在该应用的通知设置中检查");
         }
         return new Verdict(Level.OK, "通知已开启", null);
+    }
+
+    public static String duration(long millis) {
+        long minutes = Math.max(0, millis) / 60_000;
+        if (minutes < 1) return "不到 1 分钟";
+        if (minutes < 60) return minutes + " 分钟";
+        return (minutes / 60) + " 小时 " + (minutes % 60) + " 分钟";
+    }
+
+    /** since is when system_server first saw the current socket, sampling about once a minute. */
+    public static Verdict fcmConnection(int state, String remote, long since, int drops,
+                                        long monitorStart, long now) {
+        String dropText = drops == 0 ? "开机以来没有断开过" : "开机以来断开 " + drops + " 次，时间见“最近事件”";
+        if (state == FCM_CONNECTED) {
+            String age = since - monitorStart < 120_000
+                    ? "FCMFix 开始监测时已连接，至今 " + duration(now - since)
+                    : "已持续 " + duration(now - since);
+            return new Verdict(Level.OK, "已连接 " + remote + "\n" + age + "\n" + dropText, null);
+        }
+        if (state == FCM_CONNECTING) {
+            return new Verdict(Level.WARN, "正在连接 " + remote + "，尚未成功\n" + dropText,
+                    "一直停在这里，通常是 5228 端口被封或代理不通");
+        }
+        if (state == FCM_NONE) {
+            return new Verdict(Level.WARN, "GMS 当前没有连接 FCM 服务器（5228–5230 端口）\n" + dropText,
+                    "刚亮屏或刚切换网络时可能正在重连，稍后再查；一直如此通常是网络问题。少数网络下 GMS 改走 443 端口，以实际收到推送为准");
+        }
+        return new Verdict(Level.UNKNOWN, "无法检测", null);
     }
 
     /** null when the bucket needs no comment. */
