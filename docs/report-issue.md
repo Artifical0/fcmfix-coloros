@@ -133,7 +133,8 @@ su -c 'settings put global oplus_user_change_gms_network_control 0'
 
 ### 防火墙链
 
-ColorOS 17 的按应用断网都挂在 `fw_INPUT` / `fw_OUTPUT` 两条链上：每条 REJECT/DROP 规则匹配一个 BPF 程序，
+ColorOS 17 的按应用断网都挂在 `fw_INPUT` / `fw_OUTPUT` 两条链上（17.0.0.102 等较新版本改为挂在它们跳转的
+`oplus_fw_INPUT` / `oplus_fw_OUTPUT` / `fw_OUTPUT_oplus_dns` 子链上，报告会一并列出）：每条 REJECT/DROP 规则匹配一个 BPF 程序，
 被限制的 UID 记录在对应的 BPF 表中，规则本身不出现 UID。报告的“防火墙链”一栏列出这些规则及命中次数（`pkts`），
 程序名对应的功能：
 

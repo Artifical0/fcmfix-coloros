@@ -73,15 +73,21 @@ report() {
   if [ -d "$cleaner" ]; then
     if [ -f "$cleaner/disable" ]; then echo "拦截规则清理模块：已安装，已停用"; else echo "拦截规则清理模块：已安装，已启用（下列规则可能已被删除）"; fi
   fi
+  # Newer builds (17.0.0.102) move the rules into oplus_fw_INPUT / oplus_fw_OUTPUT / fw_OUTPUT_oplus_dns,
+  # so also list every oplus chain that fw_INPUT / fw_OUTPUT jump to.
   for cmd in iptables ip6tables; do
-    for chain in fw_INPUT fw_OUTPUT; do
+    sub=$({ $cmd -w -t filter -nL fw_INPUT; $cmd -w -t filter -nL fw_OUTPUT; } 2>/dev/null \
+      | awk '$1 != "Chain" && $1 != "target" {print $1}' | grep -i oplus | sort -u)
+    for chain in fw_INPUT fw_OUTPUT $sub; do
       echo "-- $cmd $chain"
       $cmd -w -t filter -nvxL "$chain" 2>&1
     done
   done
 
   section "FCMFix / ColorOS Google 限制日志"
-  logcat -d | grep -iE "fcmfix|GoogleController|OplusGoogle"
+  # Match the module's "[fcmfix]" prefix, not the package name io.github.artifical0.fcmfix.coloros,
+  # which window-manager logs mention all the time.
+  logcat -d | grep -E "\[fcmfix\]|GoogleController|OplusGoogle"
 
   # For "GMS sent the broadcast but no notification": whether the target was started, frozen or
   # killed, and whether its notifications or channels are turned off.
