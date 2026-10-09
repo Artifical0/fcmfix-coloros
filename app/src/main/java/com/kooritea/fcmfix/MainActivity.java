@@ -53,6 +53,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
+import com.kooritea.fcmfix.util.ConfigSnapshot;
 import com.kooritea.fcmfix.util.HookStatus;
 import com.kooritea.fcmfix.util.IceboxUtils;
 
@@ -60,8 +61,18 @@ public class MainActivity extends AppCompatActivity {
     private AppListAdapter appListAdapter;
     private static XposedService xposedService;
     Set<String> allowList = new HashSet<>();
+    /** FCM apps unticked while auto-allow is on. */
+    Set<String> excludeList = new HashSet<>();
     JSONObject config = new JSONObject();
     private volatile boolean configLoaded = false;
+
+    static XposedService getXposedService() {
+        return xposedService;
+    }
+
+    private boolean autoAllowFcm() {
+        return config.optBoolean(ConfigSnapshot.AUTO_ALLOW_FCM, false);
+    }
 
     private SharedPreferences getRemotePreferencesOrNull() {
         if (xposedService == null) {
@@ -111,6 +122,9 @@ public class MainActivity extends AppCompatActivity {
             if (!this.config.has("includeIceBoxDisableApp")) {
                 this.config.put("includeIceBoxDisableApp", false);
             }
+            if (!this.config.has(ConfigSnapshot.AUTO_ALLOW_FCM)) {
+                this.config.put(ConfigSnapshot.AUTO_ALLOW_FCM, false);
+            }
         } catch (JSONException e) {
             Log.e("ensureDefaultConfig", e.toString());
         }
@@ -129,11 +143,15 @@ public class MainActivity extends AppCompatActivity {
             this.config.put("allowList", new JSONArray(this.allowList));
             this.config.put("disableAutoCleanNotification", pref.getBoolean("disableAutoCleanNotification", false));
             this.config.put("includeIceBoxDisableApp", pref.getBoolean("includeIceBoxDisableApp", false));
+            this.excludeList.clear();
+            this.excludeList.addAll(pref.getStringSet("excludeList", new HashSet<>()));
+            this.config.put(ConfigSnapshot.AUTO_ALLOW_FCM, pref.getBoolean(ConfigSnapshot.AUTO_ALLOW_FCM, false));
             this.configLoaded = true;
             if (appListAdapter != null) {
                 appListAdapter.syncAllowList();
                 appListAdapter.applyFilter();
             }
+            refreshAutoAllowSwitch();
             invalidateOptionsMenu();
         } catch (Throwable e) {
             this.configLoaded = false;
@@ -151,7 +169,7 @@ public class MainActivity extends AppCompatActivity {
         if (status == null) return;
         XposedService service = xposedService;
         if (service == null) {
-            status.setText("模块状态：未激活，请在 LSPosed 中启用模块并重启手机");
+            status.setText(R.string.status_inactive);
             status.setTextColor(ContextCompat.getColor(this, R.color.statusWarning));
             return;
         }
@@ -297,8 +315,13 @@ public class MainActivity extends AppCompatActivity {
                     clipboard.setPrimaryClip(android.content.ClipData.newPlainText("FCMFix Hook 状态", report));
                     Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show();
                 })
+                .setNeutralButton("自查", (dialog, which) -> openSelfCheck())
                 .setNegativeButton("关闭", null)
                 .show());
+    }
+
+    private void openSelfCheck() {
+        startActivity(new Intent(this, SelfCheckActivity.class));
     }
 
     private class AppInfo {
@@ -350,9 +373,12 @@ public class MainActivity extends AppCompatActivity {
             this.mAppList.addAll(mAllApps);
         }
 
+        /** Same rule as ConfigSnapshot.allows in system_server. */
         private void syncAllowList() {
+            boolean auto = autoAllowFcm();
             for (AppInfo appInfo : mAllApps) {
-                appInfo.isAllow = allowList.contains(appInfo.packageName);
+                appInfo.isAllow = allowList.contains(appInfo.packageName)
+                        || (auto && appInfo.includeFcm && !excludeList.contains(appInfo.packageName));
             }
         }
 
@@ -396,15 +422,9 @@ public class MainActivity extends AppCompatActivity {
                 int position = holder.getBindingAdapterPosition();
                 if (position == RecyclerView.NO_POSITION) return;
                 AppInfo appInfo = mAppList.get(position);
-                boolean updated;
-                if(appInfo.isAllow){
-                    updated = deleteAppInAllowList(appInfo.packageName);
-                }else{
-                    updated = addAppInAllowList(appInfo.packageName);
-                }
-                if (updated) {
+                if (setAppAllowed(appInfo, !appInfo.isAllow)) {
                     appInfo.isAllow = !appInfo.isAllow;
-                    // Re-filter so an app unchecked under "已允许" leaves that view.
+                    // Re-filter so an app unchecked under "已放行" leaves that view.
                     appListAdapter.applyFilter();
                 }
             });
@@ -512,6 +532,40 @@ public class MainActivity extends AppCompatActivity {
         }, "FCMFix-apps").start();
     }
 
+    private void refreshAutoAllowSwitch() {
+        androidx.appcompat.widget.SwitchCompat toggle = findViewById(R.id.auto_allow_switch);
+        if (toggle == null) return;
+        // Detach the listener so restoring the saved state does not write it back.
+        toggle.setOnCheckedChangeListener(null);
+        toggle.setChecked(autoAllowFcm());
+        toggle.setEnabled(configLoaded);
+        toggle.setOnCheckedChangeListener((button, checked) -> {
+            boolean previous = autoAllowFcm();
+            try {
+                config.put(ConfigSnapshot.AUTO_ALLOW_FCM, checked);
+            } catch (JSONException e) {
+                Log.e("autoAllowFcm", e.toString());
+            }
+            if (!updateConfig()) {
+                try {
+                    config.put(ConfigSnapshot.AUTO_ALLOW_FCM, previous);
+                } catch (JSONException e) {
+                    Log.e("autoAllowFcm", e.toString());
+                }
+                refreshAutoAllowSwitch();
+                return;
+            }
+            if (appListAdapter != null) {
+                appListAdapter.syncAllowList();
+                appListAdapter.applyFilter();
+            }
+            invalidateOptionsMenu();
+        });
+        findViewById(R.id.auto_allow_row).setOnClickListener(v -> {
+            if (toggle.isEnabled()) toggle.toggle();
+        });
+    }
+
     private void initFilterBar() {
         EditText search = findViewById(R.id.search_input);
         RadioGroup filter = findViewById(R.id.filter_group);
@@ -530,19 +584,30 @@ public class MainActivity extends AppCompatActivity {
                 appListAdapter.setFilter(search.getText().toString(), checkedId);
             }
         });
+        refreshAutoAllowSwitch();
         findViewById(R.id.filter_bar).setVisibility(View.VISIBLE);
     }
 
-    private boolean addAppInAllowList(String packageName){
-        boolean changed = this.allowList.add(packageName);
-        if (this.updateConfig()) return true;
-        if (changed) this.allowList.remove(packageName);
-        return false;
-    }
-    private boolean deleteAppInAllowList(String packageName){
-        boolean changed = this.allowList.remove(packageName);
-        if (this.updateConfig()) return true;
-        if (changed) this.allowList.add(packageName);
+    /**
+     * With auto-allow on, an FCM app is ticked by leaving the exclude list and unticked by
+     * joining it; other apps use the manual allow list either way.
+     */
+    private boolean setAppAllowed(AppInfo appInfo, boolean allowed) {
+        Set<String> previousAllow = new HashSet<>(allowList);
+        Set<String> previousExclude = new HashSet<>(excludeList);
+        boolean automatic = autoAllowFcm() && appInfo.includeFcm;
+        if (allowed) {
+            excludeList.remove(appInfo.packageName);
+            if (!automatic) allowList.add(appInfo.packageName);
+        } else {
+            allowList.remove(appInfo.packageName);
+            if (automatic) excludeList.add(appInfo.packageName);
+        }
+        if (updateConfig()) return true;
+        allowList.clear();
+        allowList.addAll(previousAllow);
+        excludeList.clear();
+        excludeList.addAll(previousExclude);
         return false;
     }
 
@@ -560,6 +625,8 @@ public class MainActivity extends AppCompatActivity {
             boolean saved = pref.edit()
                     .putBoolean("init", true)
                     .putStringSet("allowList", new HashSet<>(this.allowList))
+                    .putStringSet("excludeList", new HashSet<>(this.excludeList))
+                    .putBoolean(ConfigSnapshot.AUTO_ALLOW_FCM, autoAllowFcm())
                     .putBoolean("disableAutoCleanNotification", this.config.getBoolean("disableAutoCleanNotification"))
                     .putBoolean("includeIceBoxDisableApp", this.config.getBoolean("includeIceBoxDisableApp"))
                     // Left behind by the removed no-response notification option.
@@ -588,6 +655,8 @@ public class MainActivity extends AppCompatActivity {
     public boolean onCreateOptionsMenu (Menu menu){
 //      menu.add("隐藏启动器图标").setCheckable(true);
 
+        menu.add("自查与导出报告");
+
         menu.add("阻止应用停止时自动清除通知").setCheckable(true);
 
         menu.add("允许唤醒被冰箱冻结的应用").setCheckable(true);
@@ -603,11 +672,13 @@ public class MainActivity extends AppCompatActivity {
     public final boolean onPrepareOptionsMenu(Menu menu) {
         for (int i = 0; i < menu.size(); i++) {
             MenuItem item = menu.getItem(i);
-            if (!"打开FCM Diagnostics".equals(item.getTitle())) {
+            if (!"打开FCM Diagnostics".equals(item.getTitle()) && !"自查与导出报告".equals(item.getTitle())) {
                 item.setEnabled(configLoaded);
             }
             if ("全选包含 FCM 的应用".equals(item.getTitle())) {
                 item.setEnabled(configLoaded && appListAdapter != null);
+                // Auto-allow already covers every FCM app.
+                item.setVisible(!autoAllowFcm());
             }
             if("隐藏启动器图标".equals(item.getTitle())){
                 PackageManager packageManager = getPackageManager();
@@ -661,6 +732,9 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public final boolean onOptionsItemSelected(MenuItem menuItem) {
+        if ("自查与导出报告".equals(menuItem.getTitle())) {
+            openSelfCheck();
+        }
         if(menuItem.getTitle().equals("隐藏启动器图标")){
             PackageManager packageManager = getPackageManager();
             packageManager.setComponentEnabledSetting(

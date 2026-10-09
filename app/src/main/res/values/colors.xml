@@ -11,4 +11,5 @@
     <color name="fcmBadgeText">#0369A1</color>
     <color name="statusOk">#15803D</color>
     <color name="statusWarning">#B45309</color>
+    <color name="statusFail">#B91C1C</color>
 </resources>

@@ -20,6 +20,7 @@ import com.kooritea.fcmfix.util.ConfigSnapshot;
 import com.kooritea.fcmfix.util.DiagnosticLogger;
 import com.kooritea.fcmfix.util.HookStatus;
 import com.kooritea.fcmfix.util.OplusAttribution;
+import com.kooritea.fcmfix.util.SelfCheck;
 import java.lang.reflect.Method;
 
 import com.kooritea.fcmfix.libxposed.XC_MethodHook;
@@ -150,7 +151,7 @@ public abstract class XposedModule {
             checkUserDeviceUnlockAndUpdateConfig();
             return false;
         }
-        return packageName != null && snapshot.allowList.contains(packageName);
+        return snapshot.allows(packageName, FcmPackages.current());
     }
 
     protected String findAllowedPackageArgument(Object[] args) {
@@ -186,7 +187,11 @@ public abstract class XposedModule {
                 try {
                     SharedPreferences preferences = XposedBridge.getRemotePreferences("config");
                     if (preferences == null) throw new IllegalStateException("RemotePreferences unavailable");
-                    config = new ConfigSnapshot(preferences.getAll());
+                    ConfigSnapshot loaded = new ConfigSnapshot(preferences.getAll());
+                    config = loaded;
+                    if (loaded.autoAllowFcm() && "android".equals(getSelfPackageName())) {
+                        FcmPackages.ensureScanned(context);
+                    }
                 } catch (Throwable e) {
                     printLog("Remote config reload failed: " + e.getMessage());
                 }
@@ -219,12 +224,32 @@ public abstract class XposedModule {
                         if (ACTION_UPDATE_CONFIG.equals(action) && isConfigSender(this)) {
                             onUpdateConfig();
                         } else if (ACTION_QUERY_STATUS.equals(action) && isOrderedBroadcast() && isConfigSender(this)) {
-                            setResultExtras(addHookStatus(getResultExtras(true)));
+                            if (intent.getBooleanExtra(SelfCheck.EXTRA_CHECK, false)
+                                    && "android".equals(getSelfPackageName())) {
+                                answerSelfCheck(goAsync());
+                            } else {
+                                setResultExtras(addHookStatus(getResultExtras(true)));
+                            }
                         }
                     }
                 }, updateConfigIntentFilter, Context.RECEIVER_EXPORTED);
             } else {
                 logOnce("Authenticated config refresh requires Android 14+; reboot to reload on older Android.");
+            }
+
+            if ("android".equals(getSelfPackageName())) {
+                IntentFilter packageFilter = new IntentFilter();
+                packageFilter.addAction(Intent.ACTION_PACKAGE_ADDED);
+                packageFilter.addAction(Intent.ACTION_PACKAGE_CHANGED);
+                packageFilter.addAction(Intent.ACTION_PACKAGE_REMOVED);
+                packageFilter.addDataScheme("package");
+                context.registerReceiver(new BroadcastReceiver() {
+                    public void onReceive(Context context, Intent intent) {
+                        if (intent.getData() != null) {
+                            FcmPackages.onPackageChanged(context, intent.getData().getSchemeSpecificPart());
+                        }
+                    }
+                }, packageFilter);
             }
 
             IntentFilter unInstallIntentFilter = new IntentFilter();
@@ -261,6 +286,23 @@ public abstract class XposedModule {
             result.putBoolean(HookStatus.KEY_IGNORE_GMS_USER_SET, OplusBatteryNetworkFix.batteryIgnoresGmsUserSet());
         }
         return result;
+    }
+
+    /** Self-check reads other services over Binder; keep it off system_server's main thread. */
+    private static void answerSelfCheck(BroadcastReceiver.PendingResult pending) {
+        new Thread(() -> {
+            try {
+                Bundle extras = addHookStatus(pending.getResultExtras(true));
+                try {
+                    SelfCheckCollector.collect(context, config, extras);
+                } catch (Throwable e) {
+                    printLog("Self-check failed: " + e);
+                }
+                pending.setResultExtras(extras);
+            } finally {
+                pending.finish();
+            }
+        }, "FCMFix-selfcheck").start();
     }
 
     private static boolean isConfigSender(BroadcastReceiver receiver) {

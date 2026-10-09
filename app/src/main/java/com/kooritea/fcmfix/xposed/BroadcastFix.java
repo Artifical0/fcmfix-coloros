@@ -190,6 +190,7 @@ public class BroadcastFix extends XposedModule {
                     if (!allowed || intent == null || !FcmTrust.matches(intent.getAction(), target)) return;
                     if (entry) {
                         printLog("FCM trusted sender: uid=" + callerUid + ", target=" + target, true);
+                        SelfCheckCollector.recordPush(target);
                         OplusProxyFix.beginFcmDeliveryWindow(target);
                         if (getBooleanConfig("includeIceBoxDisableApp", false)
                                 && !IceboxUtils.isAppEnabled(context, target)) {

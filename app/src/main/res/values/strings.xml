@@ -6,9 +6,16 @@
     <string name="screen_scope">LSPosed 作用域：系统框架 + 电池</string>
     <string name="contains_fcm">包含 FCM</string>
     <string name="status_connecting">模块状态：正在连接 LSPosed…</string>
+    <string name="status_inactive">模块状态：未激活，请在 LSPosed 中启用模块并重启手机</string>
     <string name="search_hint">搜索应用名称或包名</string>
     <string name="filter_all">全部</string>
     <string name="filter_fcm">包含 FCM</string>
-    <string name="filter_allowed">已允许</string>
+    <string name="filter_allowed">已放行</string>
     <string name="empty_list">没有匹配的应用</string>
+    <string name="auto_allow_title">自动放行包含 FCM 的应用</string>
+    <string name="auto_allow_summary">新安装的应用也会自动放行；取消勾选的应用会被排除</string>
+    <string name="self_check_title">自查</string>
+    <string name="self_check_loading">正在检查…</string>
+    <string name="export_report">导出完整报告</string>
+    <string name="copy_result">复制结果</string>
 </resources>

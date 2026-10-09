@@ -1,15 +1,19 @@
 #!/system/bin/sh
-# FCMFix 问题报告收集脚本。需要 Root：su -c sh /sdcard/Download/collect-report.sh [输出文件名] [目标应用包名]
-# 只读取系统状态和日志，不修改任何设置。
+# FCMFix 问题报告收集脚本。需要 Root：su -c sh /sdcard/Download/collect-report.sh [输出文件名] [目标应用包名…]
+# 输出文件名为 - 时写到标准输出（FCMFix 应用内导出报告用）。只读取系统状态和日志，不修改任何设置。
 
-OUT="/sdcard/Download/${1:-fcmfix-report.txt}"
-PKG="$2"
+if [ "$1" = "-" ]; then
+  OUT=-
+else
+  OUT="/sdcard/Download/${1:-fcmfix-report.txt}"
+fi
+[ $# -gt 0 ] && shift
 GMS=com.google.android.gms
 MODULE=io.github.artifical0.fcmfix.coloros
 
 section() { echo; echo "== $1"; }
 
-{
+report() {
   echo "FCMFix report $(date '+%Y-%m-%d %H:%M:%S %z')"
 
   section "系统版本"
@@ -78,7 +82,7 @@ section() { echo; echo "== $1"; }
 
   # For "GMS sent the broadcast but no notification": whether the target was started, frozen or
   # killed, and whether its notifications or channels are turned off.
-  if [ -n "$PKG" ]; then
+  for PKG in "$@"; do
     section "目标应用 $PKG"
     dumpsys package "$PKG" | grep -E "versionName|User 0:|POST_NOTIFICATIONS" || echo "未安装 $PKG"
     echo "standby-bucket=$(am get-standby-bucket "$PKG")"
@@ -91,7 +95,12 @@ section() { echo; echo "== $1"; }
 
     section "目标应用相关系统日志"
     logcat -d -b main,system,events,crash | grep -F "$PKG" | tail -n 300
-  fi
-} > "$OUT" 2>&1
+  done
+}
 
-echo "已保存到 $OUT"
+if [ "$OUT" = "-" ]; then
+  report "$@" 2>&1
+else
+  report "$@" > "$OUT" 2>&1
+  echo "已保存到 $OUT"
+fi
