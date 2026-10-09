@@ -2,9 +2,6 @@ package com.kooritea.fcmfix;
 
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
-import android.content.BroadcastReceiver;
-import android.content.ComponentName;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
@@ -17,6 +14,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.text.format.DateUtils;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -55,6 +53,7 @@ import java.util.Set;
 
 import com.kooritea.fcmfix.util.ConfigSnapshot;
 import com.kooritea.fcmfix.util.HookStatus;
+import com.kooritea.fcmfix.util.SelfCheck;
 import com.kooritea.fcmfix.util.IceboxUtils;
 
 public class MainActivity extends AppCompatActivity {
@@ -94,7 +93,7 @@ public class MainActivity extends AppCompatActivity {
                     xposedService = service;
                     runOnUiThread(() -> {
                         loadConfigFromRemotePreferences();
-                        updateModuleStatus();
+                        showStatus();
                     });
                 }
 
@@ -103,7 +102,7 @@ public class MainActivity extends AppCompatActivity {
                     if (xposedService == service) {
                         xposedService = null;
                     }
-                    runOnUiThread(MainActivity.this::updateModuleStatus);
+                    runOnUiThread(MainActivity.this::showStatus);
                 }
             });
         } catch (Throwable e) {
@@ -159,165 +158,88 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /** Latest self-check answer; null until the first query returns. */
+    private Bundle lastStatus;
+    private boolean statusPending;
+    private boolean bindTimedOut;
+
+    /** Re-check on return: pushes may have arrived, or a setting was changed elsewhere. */
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshStatus();
+    }
+
     /**
-     * Show whether LSPosed has bound the module service and which recommended scopes are
-     * missing. A bound service means the module is enabled; hooks still need a reboot after
-     * enabling it or changing its scope.
+     * Summarizes the self-check on the status card: whether LSPosed is bound, scopes, hooks,
+     * config sync and the GMS checks. The same answer feeds the last-push line in the list.
      */
-    private void updateModuleStatus() {
-        TextView status = findViewById(R.id.module_status);
-        if (status == null) return;
+    private void refreshStatus() {
+        if (statusPending) return;
+        statusPending = true;
+        CheckReport.query(this, extras -> {
+            statusPending = false;
+            if (isFinishing() || isDestroyed()) return;
+            lastStatus = extras;
+            showStatus();
+            if (appListAdapter != null) {
+                appListAdapter.syncLastPush();
+                appListAdapter.notifyLastPushChanged();
+            }
+        });
+    }
+
+    private void showStatus() {
+        TextView mark = findViewById(R.id.status_mark);
+        TextView title = findViewById(R.id.status_title);
+        TextView detail = findViewById(R.id.status_detail);
         XposedService service = xposedService;
-        if (service == null) {
-            status.setText(R.string.status_inactive);
-            status.setTextColor(ContextCompat.getColor(this, R.color.statusWarning));
-            return;
+        List<CheckReport.Row> rows = CheckReport.build(this, service,
+                lastStatus == null ? new Bundle() : lastStatus, true);
+        List<CheckReport.Row> problems = CheckReport.problems(rows);
+        SelfCheck.Level level;
+        String titleText;
+        String detailText;
+        if (lastStatus == null || (service == null && !bindTimedOut)) {
+            level = SelfCheck.Level.UNKNOWN;
+            titleText = getString(R.string.status_connecting);
+            detailText = null;
+        } else if (problems.isEmpty()) {
+            level = SelfCheck.Level.OK;
+            titleText = "一切正常";
+            detailText = okSummary(service);
+        } else {
+            CheckReport.Row first = problems.get(0);
+            boolean fail = false;
+            for (CheckReport.Row row : problems) fail |= row.level == SelfCheck.Level.FAIL;
+            level = fail ? SelfCheck.Level.FAIL : SelfCheck.Level.WARN;
+            titleText = problems.size() == 1 ? "有 1 项需要处理" : "有 " + problems.size() + " 项需要处理";
+            detailText = first.title + "：" + first.detail.split("\n")[0];
         }
-        StringBuilder text = new StringBuilder("模块状态：已激活");
+        mark.setText(CheckReport.markOf(level));
+        mark.setTextColor(ContextCompat.getColor(this, CheckReport.colorOf(level)));
+        title.setText(titleText);
+        detail.setText(detailText);
+        detail.setVisibility(detailText == null ? View.GONE : View.VISIBLE);
+    }
+
+    /** e.g. "LSPosed 1.10.2 · API 101 · 系统框架 14 项 · 电池 4 项". */
+    private String okSummary(XposedService service) {
+        StringBuilder text = new StringBuilder();
         try {
             // getApiVersion() is the newest API the framework supports; the module itself runs
             // against the API it was built for (targetApiVersion in module.prop).
-            int frameworkApi = service.getApiVersion();
-            text.append(" · ").append(service.getFrameworkName()).append(' ')
-                    .append(service.getFrameworkVersion()).append(" · API ").append(XposedInterface.LIB_API);
-            if (frameworkApi != XposedInterface.LIB_API) {
-                text.append("（框架支持 ").append(frameworkApi).append("）");
-            }
+            text.append(service.getFrameworkName()).append(' ').append(service.getFrameworkVersion())
+                    .append(" · API ").append(XposedInterface.LIB_API);
         } catch (Throwable e) {
-            Log.w("updateModuleStatus", e.toString());
+            Log.w("showStatus", e.toString());
         }
-        List<String> missing = new ArrayList<>();
-        List<String> missingScopes = new ArrayList<>();
-        try {
-            List<String> scope = service.getScope();
-            if (scope != null) {
-                if (!scope.contains("system") && !scope.contains("android")) {
-                    missing.add("系统框架");
-                    missingScopes.add("system");
-                }
-                if (!scope.contains("com.oplus.battery")) {
-                    missing.add("电池");
-                    missingScopes.add("com.oplus.battery");
-                }
-            }
-        } catch (Throwable e) {
-            Log.w("updateModuleStatus", e.toString());
-        }
-        if (missing.isEmpty()) {
-            status.setText(text);
-            status.setTextColor(ContextCompat.getColor(this, R.color.statusOk));
-            status.setOnClickListener(null);
-            status.setClickable(false);
-        } else {
-            text.append("\n缺少作用域：").append(String.join("、", missing)).append("，点击这里申请添加");
-            status.setText(text);
-            status.setTextColor(ContextCompat.getColor(this, R.color.statusWarning));
-            status.setOnClickListener(v -> requestScope(service, missingScopes));
-        }
-        queryHookStatus();
-    }
-
-    /** LSPosed asks the user to approve through a notification; hooks still need a reboot. */
-    private void requestScope(XposedService service, List<String> scopes) {
-        try {
-            service.requestScope(scopes, new XposedService.OnScopeEventListener() {
-                @Override
-                public void onScopeRequestApproved(@NonNull List<String> approved) {
-                    runOnUiThread(() -> {
-                        Toast.makeText(MainActivity.this, "作用域已添加，重启手机后生效", Toast.LENGTH_LONG).show();
-                        updateModuleStatus();
-                    });
-                }
-
-                @Override
-                public void onScopeRequestFailed(@NonNull String message) {
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                            "申请失败：" + message + "。请在 LSPosed 中手动勾选", Toast.LENGTH_LONG).show());
-                }
-            });
-            Toast.makeText(this, "已向 LSPosed 申请，请在弹出的通知中确认", Toast.LENGTH_LONG).show();
-        } catch (Throwable e) {
-            Log.w("requestScope", e.toString());
-            Toast.makeText(this, "申请失败，请在 LSPosed 中手动勾选作用域", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    /**
-     * Ask the hooked processes which hook groups installed. system_server and Battery each add
-     * their own extras to this ordered broadcast; a process that never loaded the module (scope
-     * not ticked, or no reboot since) adds nothing.
-     */
-    private void queryHookStatus() {
-        TextView view = findViewById(R.id.hook_status);
-        if (view == null) return;
-        if (Build.VERSION.SDK_INT < 34) {
-            String text = "Hook 状态查询需要 Android 14 及以上";
-            view.setText(text);
-            view.setVisibility(View.VISIBLE);
-            return;
-        }
-        Intent query = new Intent(getPackageName() + HookStatus.QUERY_ACTION_SUFFIX);
-        Bundle options = android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle();
-        sendOrderedBroadcast(query, 0, null, null, new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                Bundle result = getResultExtras(false);
-                showHookStatus(view, result == null ? new Bundle() : result);
-            }
-        }, new Handler(Looper.getMainLooper()), null, null, options);
-    }
-
-    private static final String SYSTEM_PROCESS = "android";
-    private static final String BATTERY_PROCESS = "com.oplus.battery";
-
-    private void showHookStatus(TextView view, Bundle result) {
-        boolean warning = false;
-        StringBuilder text = new StringBuilder();
-        StringBuilder details = new StringBuilder();
-        String[][] processes = {{SYSTEM_PROCESS, "系统框架"}, {BATTERY_PROCESS, "电池"}};
+        String[][] processes = {{"android", "系统框架"}, {"com.oplus.battery", "电池"}};
         for (String[] process : processes) {
-            List<String> active = result.getStringArrayList(process[0] + HookStatus.ACTIVE_SUFFIX);
-            List<String> failed = result.getStringArrayList(process[0] + HookStatus.FAILED_SUFFIX);
-            if (text.length() > 0) text.append(" · ");
-            text.append(process[1]).append("：");
-            details.append("【").append(process[1]).append("】\n");
-            if (active == null || failed == null) {
-                warning = true;
-                text.append("未加载");
-                details.append("未响应：模块未在该进程加载，请确认作用域已勾选并重启手机\n\n");
-                continue;
-            }
-            text.append(active.size()).append(" 项生效");
-            if (!failed.isEmpty()) {
-                warning = true;
-                text.append("，").append(failed.size()).append(" 项失配");
-            }
-            for (String name : failed) details.append("✗ ").append(name).append('\n');
-            for (String name : active) details.append("✓ ").append(name).append('\n');
-            details.append('\n');
+            List<String> active = lastStatus.getStringArrayList(process[0] + HookStatus.ACTIVE_SUFFIX);
+            if (active != null) text.append(" · ").append(process[1]).append(' ').append(active.size()).append(" 项");
         }
-        if (result.containsKey(HookStatus.KEY_IGNORE_GMS_USER_SET)) {
-            boolean ignores = result.getBoolean(HookStatus.KEY_IGNORE_GMS_USER_SET);
-            details.append("电池组件声明 IgnoreGmsUserSet：").append(ignores ? "是" : "否")
-                    .append(ignores ? "（系统框架会丢弃开机后对 Google 核心服务的禁网规则）"
-                            : "（保留用户在流量管理中对 Google 应用的联网设置）");
-        }
-        text.append("（点击查看）");
-        view.setText(text);
-        view.setTextColor(ContextCompat.getColor(this, warning ? R.color.statusWarning : R.color.statusOk));
-        view.setVisibility(View.VISIBLE);
-        String report = details.toString().trim();
-        view.setOnClickListener(v -> new AlertDialog.Builder(this)
-                .setTitle("Hook 状态")
-                .setMessage(report)
-                .setPositiveButton("复制", (dialog, which) -> {
-                    android.content.ClipboardManager clipboard = getSystemService(android.content.ClipboardManager.class);
-                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("FCMFix Hook 状态", report));
-                    Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show();
-                })
-                .setNeutralButton("自查", (dialog, which) -> openSelfCheck())
-                .setNegativeButton("关闭", null)
-                .show());
+        return text.toString();
     }
 
     private void openSelfCheck() {
@@ -330,6 +252,8 @@ public class MainActivity extends AppCompatActivity {
         public Drawable icon;
         public boolean isAllow = false;
         public boolean includeFcm = false;
+        /** Wall time of the last FCM push system_server saw since boot, 0 if none. */
+        public long lastPush = 0;
 
         public AppInfo(PackageInfo packageInfo) {
             this.name = packageInfo.applicationInfo.loadLabel(getPackageManager()).toString();
@@ -352,6 +276,7 @@ public class MainActivity extends AppCompatActivity {
             TextView name;
             TextView packageName;
             TextView includeFcm;
+            TextView lastPush;
             CheckBox isAllow;
 
             public ViewHolder(View view) {
@@ -361,6 +286,7 @@ public class MainActivity extends AppCompatActivity {
                 name = view.findViewById(R.id.name);
                 packageName = view.findViewById(R.id.packageName);
                 includeFcm = view.findViewById(R.id.includeFcm);
+                lastPush = view.findViewById(R.id.lastPush);
                 isAllow = view.findViewById(R.id.isAllow);
             }
         }
@@ -368,9 +294,22 @@ public class MainActivity extends AppCompatActivity {
         AppListAdapter(List<AppInfo> apps) {
             this.mAllApps = apps;
             syncAllowList();
+            syncLastPush();
             // Stable sort: allowed apps first, each group keeps the FCM-then-name order.
             mAllApps.sort(Comparator.comparing((AppInfo app) -> !app.isAllow));
             this.mAppList.addAll(mAllApps);
+        }
+
+        private void syncLastPush() {
+            Bundle status = lastStatus;
+            for (AppInfo appInfo : mAllApps) {
+                Bundle app = status == null ? null : status.getBundle(SelfCheck.APP_PREFIX + appInfo.packageName);
+                appInfo.lastPush = app == null ? 0 : app.getLong(SelfCheck.APP_LAST_PUSH);
+            }
+        }
+
+        private void notifyLastPushChanged() {
+            notifyItemRangeChanged(0, mAppList.size());
         }
 
         /** Same rule as ConfigSnapshot.allows in system_server. */
@@ -440,6 +379,13 @@ public class MainActivity extends AppCompatActivity {
             holder.includeFcm.setVisibility(appInfo.includeFcm ? View.VISIBLE : View.GONE);
             holder.isAllow.setChecked(appInfo.isAllow);
             holder.isAllow.setEnabled(configLoaded);
+            if (appInfo.isAllow && appInfo.lastPush > 0) {
+                String text = DateUtils.getRelativeTimeSpanString(appInfo.lastPush) + "收到推送";
+                holder.lastPush.setText(text);
+                holder.lastPush.setVisibility(View.VISIBLE);
+            } else {
+                holder.lastPush.setVisibility(View.GONE);
+            }
         }
 
         @Override
@@ -496,13 +442,14 @@ public class MainActivity extends AppCompatActivity {
         // Load immediately instead of waiting for a second bind callback that may never arrive.
         if (xposedService != null) {
             loadConfigFromRemotePreferences();
-            updateModuleStatus();
         } else {
             // The bind callback may take a moment; report "inactive" only if it never arrives.
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                if (xposedService == null) updateModuleStatus();
+                bindTimedOut = true;
+                if (xposedService == null && !isDestroyed()) showStatus();
             }, 3000);
         }
+        findViewById(R.id.status_card).setOnClickListener(v -> openSelfCheck());
 
         try {
             if (ContextCompat.checkSelfPermission(this, IceboxUtils.SDK_PERMISSION) != PackageManager.PERMISSION_GRANTED) {
@@ -652,113 +599,64 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public boolean onCreateOptionsMenu (Menu menu){
-//      menu.add("隐藏启动器图标").setCheckable(true);
-
-        menu.add("自查与导出报告");
-
-        menu.add("阻止应用停止时自动清除通知").setCheckable(true);
-
-        menu.add("允许唤醒被冰箱冻结的应用").setCheckable(true);
-
-        menu.add("全选包含 FCM 的应用");
-
-        menu.add("打开FCM Diagnostics");
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.main, menu);
         return true;
     }
 
-    @SuppressLint("NotifyDataSetChanged")
     @Override
     public final boolean onPrepareOptionsMenu(Menu menu) {
-        for (int i = 0; i < menu.size(); i++) {
-            MenuItem item = menu.getItem(i);
-            if (!"打开FCM Diagnostics".equals(item.getTitle()) && !"自查与导出报告".equals(item.getTitle())) {
-                item.setEnabled(configLoaded);
-            }
-            if ("全选包含 FCM 的应用".equals(item.getTitle())) {
-                item.setEnabled(configLoaded && appListAdapter != null);
-                // Auto-allow already covers every FCM app.
-                item.setVisible(!autoAllowFcm());
-            }
-            if("隐藏启动器图标".equals(item.getTitle())){
-                PackageManager packageManager = getPackageManager();
-                item.setChecked(packageManager.getComponentEnabledSetting(new ComponentName(getPackageName(), "com.kooritea.fcmfix.Home")) == PackageManager.COMPONENT_ENABLED_STATE_DISABLED);
-            }
-            if("阻止应用停止时自动清除通知".equals(item.getTitle())){
-                try {
-                    item.setChecked(this.config.getBoolean("disableAutoCleanNotification"));
-                } catch (JSONException e) {
-                    item.setChecked(false);
-                }
-            }
-            if("允许唤醒被冰箱冻结的应用".equals(item.getTitle())){
-                try {
-                    item.setChecked(this.config.getBoolean("includeIceBoxDisableApp"));
-                } catch (JSONException e) {
-                    item.setChecked(false);
-                }
-            }
-            if("全选包含 FCM 的应用".equals(item.getTitle())){
-                item.setOnMenuItemClickListener(menuItem -> {
-                    Set<String> previousAllowList = new HashSet<>(allowList);
-                    for(AppInfo appInfo : appListAdapter.mAllApps){
-                        if(appInfo.includeFcm){
-                            allowList.add(appInfo.packageName);
-                        }
-                    }
-                    if (updateConfig()) {
-                        appListAdapter.syncAllowList();
-                        appListAdapter.applyFilter();
-                    } else {
-                        allowList.clear();
-                        allowList.addAll(previousAllowList);
-                    }
-                    return false;
-                });
-            }
-            if("打开FCM Diagnostics".equals(item.getTitle())){
-                item.setOnMenuItemClickListener(menuItem -> {
-                    Intent intent = new Intent(Intent.ACTION_VIEW);
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    intent.setPackage("com.google.android.gms");
-                    intent.setComponent(new ComponentName("com.google.android.gms","com.google.android.gms.gcm.GcmDiagnostics"));
-                    startActivity(intent);
-                    return false;
-                });
-            }
-        }
+        menu.findItem(R.id.action_keep_notifications).setEnabled(configLoaded)
+                .setChecked(config.optBoolean("disableAutoCleanNotification", false));
+        menu.findItem(R.id.action_icebox).setEnabled(configLoaded)
+                .setChecked(config.optBoolean("includeIceBoxDisableApp", false));
+        // Auto-allow already covers every FCM app.
+        menu.findItem(R.id.action_select_all_fcm).setEnabled(configLoaded && appListAdapter != null)
+                .setVisible(!autoAllowFcm());
         return super.onPrepareOptionsMenu(menu);
     }
 
     @Override
-    public final boolean onOptionsItemSelected(MenuItem menuItem) {
-        if ("自查与导出报告".equals(menuItem.getTitle())) {
+    public final boolean onOptionsItemSelected(MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.action_self_check) {
             openSelfCheck();
-        }
-        if(menuItem.getTitle().equals("隐藏启动器图标")){
-            PackageManager packageManager = getPackageManager();
-            packageManager.setComponentEnabledSetting(
-                    new ComponentName(getPackageName(), "com.kooritea.fcmfix.Home"),
-                    menuItem.isChecked() ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED : PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                    PackageManager.DONT_KILL_APP
-            );
-        }
-        if(menuItem.getTitle().equals("阻止应用停止时自动清除通知")){
-            try {
-                this.config.put("disableAutoCleanNotification", !menuItem.isChecked());
-                this.updateConfig();
-            } catch (JSONException e) {
-                Log.e("onOptionsItemSelected",e.toString());
-            }
-        }
-        if(menuItem.getTitle().equals("允许唤醒被冰箱冻结的应用")){
-            try {
-                this.config.put("includeIceBoxDisableApp", !menuItem.isChecked());
-                this.updateConfig();
-            } catch (JSONException e) {
-                Log.e("onOptionsItemSelected",e.toString());
-            }
+        } else if (id == R.id.action_keep_notifications) {
+            toggleOption("disableAutoCleanNotification", !item.isChecked());
+        } else if (id == R.id.action_icebox) {
+            toggleOption("includeIceBoxDisableApp", !item.isChecked());
+        } else if (id == R.id.action_select_all_fcm) {
+            selectAllFcmApps();
+        } else if (id == R.id.action_fcm_diagnostics) {
+            CheckReport.openFcmDiagnostics(this);
+        } else {
+            return super.onOptionsItemSelected(item);
         }
         return true;
+    }
+
+    private void toggleOption(String key, boolean enabled) {
+        try {
+            config.put(key, enabled);
+            if (!updateConfig()) config.put(key, !enabled);
+        } catch (JSONException e) {
+            Log.e("toggleOption", e.toString());
+        }
+        invalidateOptionsMenu();
+    }
+
+    private void selectAllFcmApps() {
+        if (appListAdapter == null) return;
+        Set<String> previousAllowList = new HashSet<>(allowList);
+        for (AppInfo appInfo : appListAdapter.mAllApps) {
+            if (appInfo.includeFcm) allowList.add(appInfo.packageName);
+        }
+        if (updateConfig()) {
+            appListAdapter.syncAllowList();
+            appListAdapter.applyFilter();
+        } else {
+            allowList.clear();
+            allowList.addAll(previousAllowList);
+        }
     }
 }

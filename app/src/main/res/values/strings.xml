@@ -5,8 +5,9 @@
     <string name="screen_description">勾选需要由 FCM 唤醒的应用</string>
     <string name="screen_scope">LSPosed 作用域：系统框架 + 电池</string>
     <string name="contains_fcm">包含 FCM</string>
-    <string name="status_connecting">模块状态：正在连接 LSPosed…</string>
-    <string name="status_inactive">模块状态：未激活，请在 LSPosed 中启用模块并重启手机</string>
+    <string name="status_connecting">正在检查…</string>
+    <string name="status_mark_pending">…</string>
+    <string name="chevron">›</string>
     <string name="search_hint">搜索应用名称或包名</string>
     <string name="filter_all">全部</string>
     <string name="filter_fcm">包含 FCM</string>
@@ -18,4 +19,9 @@
     <string name="self_check_loading">正在检查…</string>
     <string name="export_report">导出完整报告</string>
     <string name="copy_result">复制结果</string>
+    <string name="menu_self_check">自查与导出报告</string>
+    <string name="menu_keep_notifications">阻止应用停止时自动清除通知</string>
+    <string name="menu_icebox">允许唤醒被冰箱冻结的应用</string>
+    <string name="menu_select_all_fcm">全选包含 FCM 的应用</string>
+    <string name="menu_fcm_diagnostics">打开 FCM Diagnostics</string>
 </resources>

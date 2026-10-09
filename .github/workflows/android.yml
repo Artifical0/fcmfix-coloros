@@ -16,6 +16,12 @@ jobs:
           java-version: '21'
           distribution: temurin
           cache: gradle
+      # Tagging fails late if the release notes are missing; catch it on every push instead.
+      - name: Check release notes
+        shell: bash
+        run: |
+          VERSION_NAME=$(sed -n 's/.*versionName "\([^"]*\)".*/\1/p' app/build.gradle)
+          test -f "docs/releases/$VERSION_NAME.md" || { echo "::error::missing docs/releases/$VERSION_NAME.md"; exit 1; }
       - run: chmod +x gradlew
       - run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleDebug :app:assembleRelease
       - name: Upload verification reports

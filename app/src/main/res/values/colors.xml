@@ -12,4 +12,7 @@
     <color name="statusOk">#15803D</color>
     <color name="statusWarning">#B45309</color>
     <color name="statusFail">#B91C1C</color>
+    <color name="textAccent">#4338CA</color>
+    <color name="surfacePressed">#EEF2FF</color>
+    <color name="statusCardBackground">#F1F5F9</color>
 </resources>

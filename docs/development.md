@@ -48,7 +48,8 @@ Hook 尽量挂在 Binder 入口、跨 jar 调用的服务方法或体积较大�
 
 ## 发布
 
-- 普通 master push / PR：JUnit、lintDebug、lintRelease、Debug/Release 构建，无签名步骤。
+- 普通 master push / PR：检查 `docs/releases/<versionName>.md` 是否存在，JUnit、lintDebug、lintRelease、Debug/Release 构建，
+  无签名步骤。改 versionName 时同一提交里写好发布说明，CI 才会通过。
 - 版本号从 13.0 起为 `主版本.修订`，测试版加 `-rcN`，例如 `13.0-rc5`、`13.0`、`13.1`。
   此前的版本号形如 `53-coloros-12.1`，其中 53 是上游 fcmfix 的版本；旧 tag 保持不变。
 - 推送 `v*` tag 触发正式发布：校验 tag 等于 `v` + `versionName`（如 `v13.0-rc5`），测试和 lint 通过后签名、校验签名、

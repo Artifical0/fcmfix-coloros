@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/action_self_check"
+        android:title="@string/menu_self_check" />
+    <item
+        android:id="@+id/action_keep_notifications"
+        android:checkable="true"
+        android:title="@string/menu_keep_notifications" />
+    <item
+        android:id="@+id/action_icebox"
+        android:checkable="true"
+        android:title="@string/menu_icebox" />
+    <item
+        android:id="@+id/action_select_all_fcm"
+        android:title="@string/menu_select_all_fcm" />
+    <item
+        android:id="@+id/action_fcm_diagnostics"
+        android:title="@string/menu_fcm_diagnostics" />
+</menu>

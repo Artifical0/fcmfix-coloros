@@ -75,6 +75,17 @@
             android:textColor="@color/textSecondary"
             android:textSize="13sp"
             tools:text="com.kooritea.fcmfix" />
+
+        <TextView
+            android:id="@+id/lastPush"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:maxLines="1"
+            android:textColor="@color/statusOk"
+            android:textSize="12sp"
+            android:visibility="gone"
+            tools:text="5 分钟前收到推送" />
     </LinearLayout>
 
     <CheckBox
