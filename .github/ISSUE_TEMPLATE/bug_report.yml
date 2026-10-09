@@ -18,7 +18,7 @@ body:
     id: version
     attributes:
       label: FCMFix 版本
-      placeholder: 53-coloros-12.1（LSPosed 模块列表中可查看）
+      placeholder: 13.0（LSPosed 模块列表中可查看）
     validations:
       required: true
   - type: checkboxes
@@ -35,7 +35,7 @@ body:
     id: hooks
     attributes:
       label: Hook 状态
-      description: 53-coloros-13 起，点击 FCMFix 界面顶部的 Hook 状态，选“复制”后粘贴到这里
+      description: 13.0 起可在 FCMFix 菜单“自查与导出报告”中点“复制结果”粘贴到这里；旧版本点击界面顶部的 Hook 状态，选“复制”
       render: text
   - type: dropdown
     id: fcm

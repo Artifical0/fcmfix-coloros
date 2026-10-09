@@ -1,7 +1,7 @@
 name: Tagged release
 on:
   push:
-    tags: ['53-coloros-*']
+    tags: ['v*']
 permissions:
   contents: read
 jobs:
@@ -21,7 +21,7 @@ jobs:
         shell: bash
         run: |
           VERSION_NAME=$(sed -n 's/.*versionName "\([^"]*\)".*/\1/p' app/build.gradle)
-          test "$GITHUB_REF_NAME" = "$VERSION_NAME"
+          test "$GITHUB_REF_NAME" = "v$VERSION_NAME"
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
       - run: chmod +x gradlew
       - run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleRelease
@@ -44,7 +44,7 @@ jobs:
           sha256sum "fcmfix-coloros-$VERSION_NAME.apk" > SHA256SUMS
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
-          tag_name: ${{ env.VERSION_NAME }}
+          tag_name: ${{ github.ref_name }}
           name: FCMFix ColorOS (${{ env.VERSION_NAME }})
           prerelease: ${{ contains(github.ref_name, '-rc') }}
           body_path: docs/releases/${{ env.VERSION_NAME }}.md

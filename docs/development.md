@@ -44,13 +44,15 @@
 不要删除失败的测试或关闭 lint 来规避问题，也不新增 lint baseline。
 
 Hook 尽量挂在 Binder 入口、跨 jar 调用的服务方法或体积较大的方法上：同一 dex 内被调用的短方法（getter、私有小方法）
-可能被 ART 内联，Hook 不会触发。53-coloros-11 的深度睡眠白名单 Hook 就因此失效。
+可能被 ART 内联，Hook 不会触发。
 
 ## 发布
 
 - 普通 master push / PR：JUnit、lintDebug、lintRelease、Debug/Release 构建，无签名步骤。
-- 推送 `53-coloros-*` tag 触发正式发布：校验 tag 等于 `versionName`，测试和 lint 通过后签名、校验签名、生成 SHA256SUMS，
-  并以 `docs/releases/<versionName>.md` 作为 Release 说明。tag 含 `-rc` 时自动标为预发布。
-- LSPosed 分发仓库 `Xposed-Modules-Repo/io.github.artifical0.fcmfix.coloros` 使用 `versionCode-versionName` 格式的 tag，
-  上传同一个签名 APK；发布后会推送给所有用户。
+- 版本号从 13.0 起为 `主版本.修订`，测试版加 `-rcN`，例如 `13.0-rc5`、`13.0`、`13.1`。
+  此前的版本号形如 `53-coloros-12.1`，其中 53 是上游 fcmfix 的版本；旧 tag 保持不变。
+- 推送 `v*` tag 触发正式发布：校验 tag 等于 `v` + `versionName`（如 `v13.0-rc5`），测试和 lint 通过后签名、校验签名、
+  生成 SHA256SUMS，并以 `docs/releases/<versionName>.md` 作为 Release 说明。tag 含 `-rc` 时自动标为预发布。
+- LSPosed 分发仓库 `Xposed-Modules-Repo/io.github.artifical0.fcmfix.coloros` 只发布正式版，tag 为 `versionCode-versionName`
+  （如 `77-13.0`），上传同一个签名 APK；发布后会推送给所有用户。
 - versionCode 只能递增。
