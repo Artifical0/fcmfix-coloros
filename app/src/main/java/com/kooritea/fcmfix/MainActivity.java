@@ -17,7 +17,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.util.AttributeSet;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -32,7 +31,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -113,9 +111,6 @@ public class MainActivity extends AppCompatActivity {
             if (!this.config.has("includeIceBoxDisableApp")) {
                 this.config.put("includeIceBoxDisableApp", false);
             }
-            if (!this.config.has("noResponseNotification")) {
-                this.config.put("noResponseNotification", false);
-            }
         } catch (JSONException e) {
             Log.e("ensureDefaultConfig", e.toString());
         }
@@ -134,7 +129,6 @@ public class MainActivity extends AppCompatActivity {
             this.config.put("allowList", new JSONArray(this.allowList));
             this.config.put("disableAutoCleanNotification", pref.getBoolean("disableAutoCleanNotification", false));
             this.config.put("includeIceBoxDisableApp", pref.getBoolean("includeIceBoxDisableApp", false));
-            this.config.put("noResponseNotification", pref.getBoolean("noResponseNotification", false));
             this.configLoaded = true;
             if (appListAdapter != null) {
                 appListAdapter.syncAllowList();
@@ -175,11 +169,18 @@ public class MainActivity extends AppCompatActivity {
             Log.w("updateModuleStatus", e.toString());
         }
         List<String> missing = new ArrayList<>();
+        List<String> missingScopes = new ArrayList<>();
         try {
             List<String> scope = service.getScope();
             if (scope != null) {
-                if (!scope.contains("system") && !scope.contains("android")) missing.add("系统框架");
-                if (!scope.contains("com.oplus.battery")) missing.add("电池");
+                if (!scope.contains("system") && !scope.contains("android")) {
+                    missing.add("系统框架");
+                    missingScopes.add("system");
+                }
+                if (!scope.contains("com.oplus.battery")) {
+                    missing.add("电池");
+                    missingScopes.add("com.oplus.battery");
+                }
             }
         } catch (Throwable e) {
             Log.w("updateModuleStatus", e.toString());
@@ -187,12 +188,40 @@ public class MainActivity extends AppCompatActivity {
         if (missing.isEmpty()) {
             status.setText(text);
             status.setTextColor(ContextCompat.getColor(this, R.color.statusOk));
+            status.setOnClickListener(null);
+            status.setClickable(false);
         } else {
-            text.append("\n缺少作用域：").append(String.join("、", missing)).append("，勾选后重启手机");
+            text.append("\n缺少作用域：").append(String.join("、", missing)).append("，点击这里申请添加");
             status.setText(text);
             status.setTextColor(ContextCompat.getColor(this, R.color.statusWarning));
+            status.setOnClickListener(v -> requestScope(service, missingScopes));
         }
         queryHookStatus();
+    }
+
+    /** LSPosed asks the user to approve through a notification; hooks still need a reboot. */
+    private void requestScope(XposedService service, List<String> scopes) {
+        try {
+            service.requestScope(scopes, new XposedService.OnScopeEventListener() {
+                @Override
+                public void onScopeRequestApproved(@NonNull List<String> approved) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(MainActivity.this, "作用域已添加，重启手机后生效", Toast.LENGTH_LONG).show();
+                        updateModuleStatus();
+                    });
+                }
+
+                @Override
+                public void onScopeRequestFailed(@NonNull String message) {
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                            "申请失败：" + message + "。请在 LSPosed 中手动勾选", Toast.LENGTH_LONG).show());
+                }
+            });
+            Toast.makeText(this, "已向 LSPosed 申请，请在弹出的通知中确认", Toast.LENGTH_LONG).show();
+        } catch (Throwable e) {
+            Log.w("requestScope", e.toString());
+            Toast.makeText(this, "申请失败，请在 LSPosed 中手动勾选作用域", Toast.LENGTH_LONG).show();
+        }
     }
 
     /**
@@ -256,9 +285,6 @@ public class MainActivity extends AppCompatActivity {
                             : "（保留用户在流量管理中对 Google 应用的联网设置）");
         }
         text.append("（点击查看）");
-        if (result.containsKey(HookStatus.KEY_SYSTEM_READY) && !result.getBoolean(HookStatus.KEY_SYSTEM_READY)) {
-            text.append("\n解锁后 1 分钟内暂不放行推送");
-        }
         view.setText(text);
         view.setTextColor(ContextCompat.getColor(this, warning ? R.color.statusWarning : R.color.statusOk));
         view.setVisibility(View.VISIBLE);
@@ -279,8 +305,8 @@ public class MainActivity extends AppCompatActivity {
         public String name;
         public String packageName;
         public Drawable icon;
-        public Boolean isAllow = false;
-        public Boolean includeFcm = false;
+        public boolean isAllow = false;
+        public boolean includeFcm = false;
 
         public AppInfo(PackageInfo packageInfo) {
             this.name = packageInfo.applicationInfo.loadLabel(getPackageManager()).toString();
@@ -316,71 +342,12 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        public AppListAdapter(){
-            Set<String> allowListSet = new HashSet<>(allowList);
-            allowListSet.containsAll(allowList);
-            List<AppInfo> _allowList = new ArrayList<>();
-            List<AppInfo> _notAllowList = new ArrayList<>();
-            List<AppInfo> _notFoundFcm = new ArrayList<>();
-            PackageManager packageManager = getPackageManager();
-            for(PackageInfo packageInfo : packageManager.getInstalledPackages(PackageManager.GET_RECEIVERS | PackageManager.MATCH_DISABLED_COMPONENTS | PackageManager.MATCH_UNINSTALLED_PACKAGES)) {
-                boolean flag = false;
-                AppInfo appInfo = new AppInfo(packageInfo);
-                if (packageInfo.receivers != null) {
-                    for (ActivityInfo  receiverInfo : packageInfo.receivers ){
-                        if(receiverInfo.name.equals("com.google.firebase.iid.FirebaseInstanceIdReceiver")){
-                            flag = true;
-                            appInfo.includeFcm = true;
-                            break;
-                        }
-                    }
-                }
-                if (!flag) {
-                    Intent receive = new Intent("com.google.android.c2dm.intent.RECEIVE").setPackage(packageInfo.packageName);
-                    Intent service = new Intent("com.google.firebase.MESSAGING_EVENT").setPackage(packageInfo.packageName);
-                    int flags = PackageManager.MATCH_DISABLED_COMPONENTS;
-                    flag = !packageManager.queryBroadcastReceivers(receive, flags).isEmpty()
-                            || !packageManager.queryIntentServices(service, flags).isEmpty();
-                    appInfo.includeFcm = flag;
-                }
-                if(allowListSet.contains(appInfo.packageName)){
-                    appInfo.isAllow = true;
-                    _allowList.add(appInfo);
-                }else{
-                    if(flag){
-                        _notAllowList.add(appInfo);
-                    }else{
-                        _notFoundFcm.add(appInfo);
-                    }
-                }
-            }
-            class SortName implements Comparator<AppInfo> {
-                final Collator localCompare = Collator.getInstance(Locale.getDefault());
-                @Override
-                public int compare(AppInfo a1, AppInfo a2) {
-                    if(localCompare.compare(a1.name,a2.name)>0){
-                        return 1;
-                    }else if (localCompare.compare(a1.name, a2.name) < 0) {
-                        return -1;
-                    }
-                    return 0;
-                }
-            }
-            final SortName sortName = new SortName();
-            _allowList.sort(sortName);
-            _notAllowList.sort(sortName);
-            _notFoundFcm.sort(sortName);
-            _allowList.addAll(_notAllowList);
-            _allowList.addAll(_notFoundFcm);
-            this.mAllApps = _allowList;
-            this.mAppList.addAll(_allowList);
-            if(_allowList.size() == 0 || _allowList.isEmpty() ||(_allowList.size() == 1 && getPackageName().equals(_allowList.get(0).packageName))){
-                new AlertDialog.Builder(MainActivity.this)
-                        .setTitle("请在系统设置中授予读取应用列表权限")
-                        .setMessage("或直接编辑" + getApplicationContext().getFilesDir().getAbsolutePath() + "/config.json(需重启生效)")
-                        .setPositiveButton("确定", (dialog, which) -> {})
-                        .show();
-            }
+        AppListAdapter(List<AppInfo> apps) {
+            this.mAllApps = apps;
+            syncAllowList();
+            // Stable sort: allowed apps first, each group keeps the FCM-then-name order.
+            mAllApps.sort(Comparator.comparing((AppInfo app) -> !app.isAllow));
+            this.mAppList.addAll(mAllApps);
         }
 
         private void syncAllowList() {
@@ -462,6 +429,40 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+    /**
+     * Scans every installed package for FCM receivers and loads labels and icons. This takes
+     * seconds on a phone with hundreds of system packages, so it runs off the main thread.
+     * Apps with FCM come first; the adapter moves allowed apps to the top once config is known.
+     */
+    private List<AppInfo> loadInstalledApps() {
+        List<AppInfo> apps = new ArrayList<>();
+        PackageManager packageManager = getPackageManager();
+        for (PackageInfo packageInfo : packageManager.getInstalledPackages(PackageManager.GET_RECEIVERS
+                | PackageManager.MATCH_DISABLED_COMPONENTS | PackageManager.MATCH_UNINSTALLED_PACKAGES)) {
+            AppInfo appInfo = new AppInfo(packageInfo);
+            if (packageInfo.receivers != null) {
+                for (ActivityInfo receiverInfo : packageInfo.receivers) {
+                    if (receiverInfo.name.equals("com.google.firebase.iid.FirebaseInstanceIdReceiver")) {
+                        appInfo.includeFcm = true;
+                        break;
+                    }
+                }
+            }
+            if (!appInfo.includeFcm) {
+                Intent receive = new Intent("com.google.android.c2dm.intent.RECEIVE").setPackage(packageInfo.packageName);
+                Intent service = new Intent("com.google.firebase.MESSAGING_EVENT").setPackage(packageInfo.packageName);
+                int flags = PackageManager.MATCH_DISABLED_COMPONENTS;
+                appInfo.includeFcm = !packageManager.queryBroadcastReceivers(receive, flags).isEmpty()
+                        || !packageManager.queryIntentServices(service, flags).isEmpty();
+            }
+            apps.add(appInfo);
+        }
+        Collator collator = Collator.getInstance(Locale.getDefault());
+        apps.sort(Comparator.comparing((AppInfo app) -> !app.includeFcm)
+                .thenComparing(app -> app.name, collator));
+        return apps;
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -478,7 +479,7 @@ public class MainActivity extends AppCompatActivity {
             updateModuleStatus();
         } else {
             // The bind callback may take a moment; report "inactive" only if it never arrives.
-            new Handler().postDelayed(() -> {
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 if (xposedService == null) updateModuleStatus();
             }, 3000);
         }
@@ -490,14 +491,25 @@ public class MainActivity extends AppCompatActivity {
         } catch (Throwable ignored) {
         }
 
-        new Handler().postDelayed(() -> {
-            appListAdapter = new AppListAdapter();
-            recyclerView.setAdapter(appListAdapter);
-            findViewById(R.id.progress_bar).setVisibility(View.GONE);
-            recyclerView.setVisibility(View.VISIBLE);
-            initFilterBar();
-            invalidateOptionsMenu();
-        }, 1000);
+        new Thread(() -> {
+            List<AppInfo> apps = loadInstalledApps();
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                appListAdapter = new AppListAdapter(apps);
+                recyclerView.setAdapter(appListAdapter);
+                findViewById(R.id.progress_bar).setVisibility(View.GONE);
+                recyclerView.setVisibility(View.VISIBLE);
+                initFilterBar();
+                invalidateOptionsMenu();
+                if (apps.size() <= 1) {
+                    new AlertDialog.Builder(this)
+                            .setTitle("无法读取应用列表")
+                            .setMessage("请在系统设置中允许 FCMFix 读取应用列表，然后重新打开。")
+                            .setPositiveButton("确定", null)
+                            .show();
+                }
+            });
+        }, "FCMFix-apps").start();
     }
 
     private void initFilterBar() {
@@ -519,12 +531,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         findViewById(R.id.filter_bar).setVisibility(View.VISIBLE);
-    }
-
-    @Nullable
-    @Override
-    public View onCreateView(@Nullable View parent, @NonNull String name, @NonNull Context context, @NonNull AttributeSet attrs) {
-        return super.onCreateView(parent, name, context, attrs);
     }
 
     private boolean addAppInAllowList(String packageName){
@@ -556,7 +562,8 @@ public class MainActivity extends AppCompatActivity {
                     .putStringSet("allowList", new HashSet<>(this.allowList))
                     .putBoolean("disableAutoCleanNotification", this.config.getBoolean("disableAutoCleanNotification"))
                     .putBoolean("includeIceBoxDisableApp", this.config.getBoolean("includeIceBoxDisableApp"))
-                    .putBoolean("noResponseNotification", this.config.getBoolean("noResponseNotification"))
+                    // Left behind by the removed no-response notification option.
+                    .remove("noResponseNotification")
                     .commit();
             if (!saved) {
                 throw new IllegalStateException("配置写入失败");
@@ -584,8 +591,6 @@ public class MainActivity extends AppCompatActivity {
         menu.add("阻止应用停止时自动清除通知").setCheckable(true);
 
         menu.add("允许唤醒被冰箱冻结的应用").setCheckable(true);
-
-//        menu.add("目标无响应时代发提示通知").setCheckable(true);
 
         menu.add("全选包含 FCM 的应用");
 
@@ -618,13 +623,6 @@ public class MainActivity extends AppCompatActivity {
             if("允许唤醒被冰箱冻结的应用".equals(item.getTitle())){
                 try {
                     item.setChecked(this.config.getBoolean("includeIceBoxDisableApp"));
-                } catch (JSONException e) {
-                    item.setChecked(false);
-                }
-            }
-            if("目标无响应时代发提示通知".equals(item.getTitle())){
-                try {
-                    item.setChecked(this.config.getBoolean("noResponseNotification"));
                 } catch (JSONException e) {
                     item.setChecked(false);
                 }
@@ -682,14 +680,6 @@ public class MainActivity extends AppCompatActivity {
         if(menuItem.getTitle().equals("允许唤醒被冰箱冻结的应用")){
             try {
                 this.config.put("includeIceBoxDisableApp", !menuItem.isChecked());
-                this.updateConfig();
-            } catch (JSONException e) {
-                Log.e("onOptionsItemSelected",e.toString());
-            }
-        }
-        if(menuItem.getTitle().equals("目标无响应时代发提示通知")){
-            try {
-                this.config.put("noResponseNotification", !menuItem.isChecked());
                 this.updateConfig();
             } catch (JSONException e) {
                 Log.e("onOptionsItemSelected",e.toString());

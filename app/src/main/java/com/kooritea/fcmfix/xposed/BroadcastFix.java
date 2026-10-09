@@ -1,17 +1,7 @@
 package com.kooritea.fcmfix.xposed;
 
-import android.Manifest;
-import android.app.PendingIntent;
 import android.content.Intent;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
-import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.Drawable;
-import android.os.Build;
 
-import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
 
 import java.lang.reflect.Method;
 import java.util.HashSet;
@@ -33,11 +23,6 @@ public class BroadcastFix extends XposedModule {
         runHook("broadcast entry point", this::startHookBroadcastEntryPoints);
         runHook("broadcastIntentLocked", this::startHookBroadcastIntentLocked);
         runHook("broadcast deoptimize", this::deoptimizeBroadcastCallers);
-//        try{
-//            this.startHookScheduleResultTo();
-//        }catch (Throwable e) {
-//            printLog("hook error com.android.server.am.BroadcastQueueModernImpl.scheduleResultTo:" + e.getMessage());
-//        }
     }
 
     /**
@@ -222,75 +207,5 @@ public class BroadcastFix extends XposedModule {
                 }
             }
         });
-    }
-
-    protected void startHookScheduleResultTo(){
-        Method method = XposedUtils.findMethod(XposedHelpers.findClass("com.android.server.am.BroadcastQueueModernImpl",classLoader),"scheduleResultTo",1);
-        XposedBridge.hookMethod(method,new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam methodHookParam) {
-                if(!isBootComplete){
-                    return;
-                }
-                if(methodHookParam.args[0] == null || XposedHelpers.getObjectField(methodHookParam.args[0],"resultTo") == null || XposedHelpers.getObjectField(methodHookParam.args[0],"intent") == null || XposedHelpers.getObjectField(methodHookParam.args[0],"resultCode") == null){
-                    return;
-                }
-                Intent intent = (Intent)XposedHelpers.getObjectField(methodHookParam.args[0],"intent");
-                int resultCode = (int) XposedHelpers.getObjectField(methodHookParam.args[0],"resultCode");
-                String packageName = intent.getPackage();
-                if(resultCode != -1 && getBooleanConfig("noResponseNotification",false) && targetIsAllow(packageName)){
-                    try{
-                        Intent notifyIntent = context.getPackageManager().getLaunchIntentForPackage(packageName);
-                        if(notifyIntent!=null){
-                            notifyIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                            PendingIntent pendingIntent = PendingIntent.getActivity(
-                                    context, 0, notifyIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-                            NotificationManagerCompat notificationManager = NotificationManagerCompat.from(context);
-                            createFcmfixChannel(notificationManager);
-                            NotificationCompat.Builder notification = new NotificationCompat.Builder(context, "fcmfix")
-                                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                                    .setContentTitle("FCM Message")
-                                    .setPriority(NotificationCompat.PRIORITY_DEFAULT);
-                            Bitmap icon = getAppIcon(packageName);
-                            if(icon != null){
-                                notification.setLargeIcon(icon);
-                            }
-                            notification.setContentIntent(pendingIntent).setAutoCancel(true);
-                            if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(
-                                    Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                                printLog("No-response notification skipped: host cannot post notifications", false);
-                                return;
-                            }
-                            notificationManager.notify((int) System.currentTimeMillis(), notification.build());
-                        }else{
-                            printLog("无法获取目标应用active: " + packageName,false);
-                        }
-                    }catch (Throwable e){
-                        printLog(e.getMessage(),false);
-                    }
-                }
-            }
-        });
-    }
-
-    private static Bitmap getAppIcon(String packageName) {
-        try {
-            PackageManager pm = context.getPackageManager();
-            ApplicationInfo appInfo = pm.getApplicationInfo(packageName, 0);
-            Drawable drawable = pm.getApplicationIcon(appInfo);
-            if (drawable instanceof BitmapDrawable) {
-                return ((BitmapDrawable) drawable).getBitmap();
-            } else {
-                Bitmap bitmap = Bitmap.createBitmap(
-                        drawable.getIntrinsicWidth(),
-                        drawable.getIntrinsicHeight(),
-                        Bitmap.Config.ARGB_8888);
-                drawable.setBounds(0, 0, bitmap.getWidth(), bitmap.getHeight());
-                drawable.draw(new android.graphics.Canvas(bitmap));
-                return bitmap;
-            }
-        } catch (Throwable e) {
-            return null;
-        }
     }
 }

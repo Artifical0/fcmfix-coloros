@@ -22,8 +22,6 @@ import com.kooritea.fcmfix.util.HookStatus;
 import com.kooritea.fcmfix.util.OplusAttribution;
 import java.lang.reflect.Method;
 
-import androidx.core.app.NotificationManagerCompat;
-
 import com.kooritea.fcmfix.libxposed.XC_MethodHook;
 import com.kooritea.fcmfix.libxposed.XposedBridge;
 import com.kooritea.fcmfix.libxposed.XposedHelpers;
@@ -98,19 +96,10 @@ public abstract class XposedModule {
 
     private static void callAllOnCanReadConfig() {
         initReceiver();
-        if ("android".equals(getSelfPackageName())) {
-            new Thread(() -> {
-                try {
-                    Thread.sleep(60000);
-                    isBootComplete = true;
-                    printLog("Boot Complete");
-                } catch (Throwable e) {
-                    printLog(e.getMessage());
-                }
-            }).start();
-        } else {
-            isBootComplete = true;
-        }
+        // Upstream waited another 60 s here, but GMS reconnects and flushes the messages queued
+        // during a reboot within that minute; stopped apps would miss them. Until the config
+        // finishes loading, targetIsAllow() is false anyway.
+        isBootComplete = true;
         for (XposedModule instance : instances) {
             try {
                 instance.onCanReadConfig();
@@ -206,6 +195,7 @@ public abstract class XposedModule {
         loadConfigThread.start();
     }
 
+    /** Removes the channel that older versions' no-response notification created in system_server. */
     private static void onUninstallFcmfix() {
         NotificationManager notificationManager = (NotificationManager) context.getSystemService(NOTIFICATION_SERVICE);
         NotificationChannel channel = notificationManager.getNotificationChannel("fcmfix");
@@ -259,14 +249,6 @@ public abstract class XposedModule {
 
     }
 
-    protected void createFcmfixChannel(NotificationManagerCompat notificationManager) {
-        if (notificationManager.getNotificationChannel("fcmfix") == null) {
-            NotificationChannel channel = new NotificationChannel("fcmfix", "fcmfix", NotificationManager.IMPORTANCE_HIGH);
-            channel.setDescription("[xposed] fcmfix");
-            notificationManager.createNotificationChannel(channel);
-        }
-    }
-
     protected boolean isFCMAction(String action) {
         return com.kooritea.fcmfix.util.FcmTrust.isAction(action);
     }
@@ -276,7 +258,6 @@ public abstract class XposedModule {
         result.putStringArrayList(process + HookStatus.ACTIVE_SUFFIX, OplusHooks.STATUS.active());
         result.putStringArrayList(process + HookStatus.FAILED_SUFFIX, OplusHooks.STATUS.failed());
         if ("android".equals(process)) {
-            result.putBoolean(HookStatus.KEY_SYSTEM_READY, isBootComplete);
             result.putBoolean(HookStatus.KEY_IGNORE_GMS_USER_SET, OplusBatteryNetworkFix.batteryIgnoresGmsUserSet());
         }
         return result;

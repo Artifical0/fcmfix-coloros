@@ -23,7 +23,7 @@ public final class ConfigSnapshot {
         }
         allowList = Collections.unmodifiableSet(packages);
         Map<String, Boolean> flags = new HashMap<>();
-        for (String key : new String[]{"disableAutoCleanNotification", "includeIceBoxDisableApp", "noResponseNotification"}) {
+        for (String key : new String[]{"disableAutoCleanNotification", "includeIceBoxDisableApp"}) {
             Object value = values.get(key);
             if (value != null && !(value instanceof Boolean)) throw new IllegalArgumentException("Invalid " + key);
             flags.put(key, Boolean.TRUE.equals(value));

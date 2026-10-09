@@ -20,7 +20,7 @@ public class ConfigSnapshotTest {
         assertTrue(snapshot.allowList.contains("target"));
         assertTrue(snapshot.options.get("includeIceBoxDisableApp"));
         assertThrows(UnsupportedOperationException.class, () -> snapshot.allowList.add("evil"));
-        assertThrows(UnsupportedOperationException.class, () -> snapshot.options.put("noResponseNotification", true));
+        assertThrows(UnsupportedOperationException.class, () -> snapshot.options.put("includeIceBoxDisableApp", true));
     }
     @Test public void corruptConfigIsNotPublished() {
         assertThrows(IllegalArgumentException.class,

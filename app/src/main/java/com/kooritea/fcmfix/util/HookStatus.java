@@ -10,8 +10,6 @@ public final class HookStatus {
     public static final String QUERY_ACTION_SUFFIX = ".query.status";
     public static final String ACTIVE_SUFFIX = ".active";
     public static final String FAILED_SUFFIX = ".failed";
-    /** system_server only: false during the first minute after unlock, when FCM is not exempted. */
-    public static final String KEY_SYSTEM_READY = "android.ready";
     /** system_server only: whether Battery declares IgnoreGmsUserSet (gates the firewall drop). */
     public static final String KEY_IGNORE_GMS_USER_SET = "ignoreGmsUserSet";
 

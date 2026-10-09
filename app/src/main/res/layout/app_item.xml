@@ -17,73 +17,64 @@
     android:paddingEnd="10dp"
     android:paddingBottom="10dp">
 
+    <ImageView
+        android:id="@+id/icon"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:contentDescription="@null"
+        tools:src="@tools:sample/avatars" />
+
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="8dp"
         android:layout_weight="1"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="0dp"
-        android:paddingEnd="8dp">
-
-        <ImageView
-            android:id="@+id/icon"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:contentDescription="@null"
-            tools:src="@tools:sample/avatars" />
+        android:orientation="vertical">
 
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:id="@+id/name"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:ellipsize="end"
-                    android:maxLines="1"
-                    android:textColor="@color/textPrimary"
-                    android:textSize="17sp"
-                    android:textStyle="bold"
-                    tools:text="fcmfix" />
-
-                <TextView
-                    android:id="@+id/includeFcm"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:background="@drawable/bg_fcm_badge"
-                    android:paddingStart="7dp"
-                    android:paddingTop="2dp"
-                    android:paddingEnd="7dp"
-                    android:paddingBottom="2dp"
-                    android:text="@string/contains_fcm"
-                    android:textColor="@color/fcmBadgeText"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
+            android:gravity="center_vertical">
 
             <TextView
-                android:id="@+id/packageName"
-                android:layout_width="match_parent"
+                android:id="@+id/name"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:ellipsize="middle"
+                android:layout_weight="1"
+                android:ellipsize="end"
                 android:maxLines="1"
-                android:textColor="@color/textSecondary"
-                android:textSize="13sp"
-                tools:text="com.kooritea.fcmfix" />
+                android:textColor="@color/textPrimary"
+                android:textSize="17sp"
+                android:textStyle="bold"
+                tools:text="fcmfix" />
+
+            <TextView
+                android:id="@+id/includeFcm"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_fcm_badge"
+                android:paddingStart="7dp"
+                android:paddingTop="2dp"
+                android:paddingEnd="7dp"
+                android:paddingBottom="2dp"
+                android:text="@string/contains_fcm"
+                android:textColor="@color/fcmBadgeText"
+                android:textSize="11sp"
+                android:textStyle="bold" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/packageName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:ellipsize="middle"
+            android:maxLines="1"
+            android:textColor="@color/textSecondary"
+            android:textSize="13sp"
+            tools:text="com.kooritea.fcmfix" />
     </LinearLayout>
 
     <CheckBox
