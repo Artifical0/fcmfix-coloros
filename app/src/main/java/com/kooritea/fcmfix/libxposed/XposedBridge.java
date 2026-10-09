@@ -6,13 +6,20 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 
+
+import com.kooritea.fcmfix.util.LogRing;
 
 import io.github.libxposed.api.XposedInterface;
 
 public final class XposedBridge {
 
     private static XposedInterface xposedInterface;
+    private static final LogRing RECENT = new LogRing(400);
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss.SSS");
 
 
     private XposedBridge() {
@@ -24,6 +31,12 @@ public final class XposedBridge {
 
     public static void log(String text) {
         android.util.Log.i("fcmfix", text);
+        RECENT.add(LocalDateTime.now().format(TIME) + " " + text);
+    }
+
+    /** This process's recent module log lines, oldest first. */
+    public static ArrayList<String> recentLogs() {
+        return RECENT.snapshot();
     }
 
     public static SharedPreferences getRemotePreferences(String group) {

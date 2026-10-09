@@ -228,7 +228,8 @@ public abstract class XposedModule {
                                     && "android".equals(getSelfPackageName())) {
                                 answerSelfCheck(goAsync());
                             } else {
-                                setResultExtras(addHookStatus(getResultExtras(true)));
+                                setResultExtras(addHookStatus(getResultExtras(true),
+                                        intent.getBooleanExtra(HookStatus.EXTRA_LOGS, false)));
                             }
                         }
                     }
@@ -278,8 +279,9 @@ public abstract class XposedModule {
         return com.kooritea.fcmfix.util.FcmTrust.isAction(action);
     }
 
-    private static Bundle addHookStatus(Bundle result) {
+    private static Bundle addHookStatus(Bundle result, boolean logs) {
         String process = getSelfPackageName();
+        if (logs) result.putStringArrayList(process + HookStatus.LOGS_SUFFIX, XposedBridge.recentLogs());
         result.putStringArrayList(process + HookStatus.ACTIVE_SUFFIX, OplusHooks.STATUS.active());
         result.putStringArrayList(process + HookStatus.FAILED_SUFFIX, OplusHooks.STATUS.failed());
         if ("android".equals(process)) {
@@ -292,7 +294,7 @@ public abstract class XposedModule {
     private static void answerSelfCheck(BroadcastReceiver.PendingResult pending) {
         new Thread(() -> {
             try {
-                Bundle extras = addHookStatus(pending.getResultExtras(true));
+                Bundle extras = addHookStatus(pending.getResultExtras(true), false);
                 try {
                     SelfCheckCollector.collect(context, config, extras);
                 } catch (Throwable e) {

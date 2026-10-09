@@ -12,6 +12,9 @@ public final class HookStatus {
     public static final String FAILED_SUFFIX = ".failed";
     /** system_server only: whether Battery declares IgnoreGmsUserSet (gates the firewall drop). */
     public static final String KEY_IGNORE_GMS_USER_SET = "ignoreGmsUserSet";
+    /** Query extra: also return each process's recent module log lines (report export only). */
+    public static final String EXTRA_LOGS = "logs";
+    public static final String LOGS_SUFFIX = ".logs";
 
     private final Map<String, String> failures = new LinkedHashMap<>();
 

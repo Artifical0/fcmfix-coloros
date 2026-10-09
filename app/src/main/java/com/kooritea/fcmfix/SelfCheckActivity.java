@@ -21,6 +21,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
+import com.kooritea.fcmfix.util.HookStatus;
 import com.kooritea.fcmfix.util.SelfCheck;
 
 import java.io.File;
@@ -142,6 +143,13 @@ public class SelfCheckActivity extends AppCompatActivity {
                 .setMessage("正在生成报告，需要授予 Root 权限…")
                 .setCancelable(false)
                 .show();
+        // The module's own log lines outlive logcat; fetch them first, then append to the report.
+        String checkText = CheckReport.toText(rows);
+        CheckReport.query(this, HookStatus.EXTRA_LOGS, logs -> runReport(packageName, progress,
+                "\n== 自查结果\n" + checkText + "\n" + CheckReport.logsText(logs)));
+    }
+
+    private void runReport(String packageName, AlertDialog progress, String appendix) {
         new Thread(() -> {
             String error = null;
             File report = null;
@@ -175,6 +183,10 @@ public class SelfCheckActivity extends AppCompatActivity {
                 String head = readHead(report);
                 if (!head.startsWith("FCMFix report")) {
                     error = head.trim().isEmpty() ? "没有获得 Root 权限" : head.trim();
+                } else {
+                    try (OutputStream out = new FileOutputStream(report, true)) {
+                        out.write(appendix.getBytes(StandardCharsets.UTF_8));
+                    }
                 }
             } catch (IOException e) {
                 error = "无法执行 su：" + e.getMessage();

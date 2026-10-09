@@ -82,12 +82,17 @@ final class CheckReport {
      * gets an empty Bundle when no hooked process answers or on Android 13 and older.
      */
     static void query(Activity context, Consumer<Bundle> callback) {
+        query(context, SelfCheck.EXTRA_CHECK, callback);
+    }
+
+    /** extra selects what the hooked processes add: SelfCheck.EXTRA_CHECK or HookStatus.EXTRA_LOGS. */
+    static void query(Activity context, String extra, Consumer<Bundle> callback) {
         if (Build.VERSION.SDK_INT < 34) {
             callback.accept(new Bundle());
             return;
         }
         Intent query = new Intent(context.getPackageName() + HookStatus.QUERY_ACTION_SUFFIX)
-                .putExtra(SelfCheck.EXTRA_CHECK, true);
+                .putExtra(extra, true);
         Bundle options = android.app.BroadcastOptions.makeBasic().setShareIdentityEnabled(true).toBundle();
         context.sendOrderedBroadcast(query, 0, null, null, new BroadcastReceiver() {
             @Override
@@ -170,6 +175,18 @@ final class CheckReport {
             case FAIL: return R.color.statusFail;
             default: return R.color.textSecondary;
         }
+    }
+
+    /** Report sections for the module log lines each hooked process kept since boot. */
+    static String logsText(Bundle logs) {
+        StringBuilder text = new StringBuilder();
+        for (String[] process : PROCESSES) {
+            text.append("\n== FCMFix 模块日志（").append(process[1]).append("，由模块自身保留，不受 logcat 缓冲区限制）\n");
+            List<String> lines = logs.getStringArrayList(process[0] + HookStatus.LOGS_SUFFIX);
+            if (lines == null) text.append("未响应：模块未在该进程加载\n");
+            else for (String line : lines) text.append(line).append('\n');
+        }
+        return text.toString();
     }
 
     static String toText(List<Row> rows) {
