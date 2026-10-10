@@ -24,12 +24,16 @@ import com.kooritea.fcmfix.util.SelfCheck;
 import com.kooritea.fcmfix.util.SelfCheck.Level;
 import com.kooritea.fcmfix.util.SelfCheck.Verdict;
 
+import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.function.Consumer;
 
 import io.github.libxposed.service.XposedService;
@@ -41,9 +45,17 @@ import io.github.libxposed.service.XposedService;
 final class CheckReport {
     private static final String[][] PROCESSES = {{"android", "系统框架"}, {"com.oplus.battery", "电池"}};
 
+    /** The self-check page shows one page at a time; the copied text has all of them. */
+    enum Page { OVERVIEW, APPS, EVENTS }
+
+    enum Kind { SECTION, CHECK, EVENT, NOTE }
+
     static final class Row {
-        /** null for a section header. */
+        final Kind kind;
+        final Page page;
+        /** INFO for sections, events and notes. */
         final Level level;
+        /** Section name, check name, or an event's time of day. */
         final String title;
         final String detail;
         final String hint;
@@ -52,8 +64,14 @@ final class CheckReport {
         final boolean problem;
         /** Extra lines only for the copied text. */
         String copyExtra;
+        /** App rows: shown with the app's icon. */
+        String packageName;
+        SelfCheck.EventKind eventKind;
 
-        Row(Level level, String title, String detail, String hint, Runnable action, boolean problem) {
+        Row(Kind kind, Page page, Level level, String title, String detail, String hint, Runnable action,
+            boolean problem) {
+            this.kind = kind;
+            this.page = page;
             this.level = level;
             this.title = title;
             this.detail = detail;
@@ -63,7 +81,7 @@ final class CheckReport {
         }
 
         boolean isSection() {
-            return level == null;
+            return kind == Kind.SECTION;
         }
     }
 
@@ -71,6 +89,7 @@ final class CheckReport {
     /** Status card only: skip label lookups for apps without a problem. */
     private final boolean summary;
     private final List<Row> rows = new ArrayList<>();
+    private Page page = Page.OVERVIEW;
 
     private CheckReport(Activity activity, boolean summary) {
         this.activity = activity;
@@ -182,41 +201,84 @@ final class CheckReport {
         StringBuilder text = new StringBuilder();
         for (String[] process : PROCESSES) {
             text.append("\n== FCMFix 模块日志（").append(process[1]).append("，由模块自身保留，不受 logcat 缓冲区限制）\n");
-            List<String> lines = logs.getStringArrayList(process[0] + HookStatus.LOGS_SUFFIX);
+            List<String> lines = logLines(logs, process[0] + HookStatus.LOGS_SUFFIX);
             if (lines == null) text.append("未响应：模块未在该进程加载\n");
             else for (String line : lines) text.append(line).append('\n');
         }
         return text.toString();
     }
 
+    /** Packed since 13.0-rc7; a process still running the previous version sends the plain list. */
+    private static List<String> logLines(Bundle logs, String key) {
+        byte[] packed = logs.getByteArray(key);
+        if (packed != null) {
+            try {
+                return HookStatus.unpack(packed);
+            } catch (IOException e) {
+                return Collections.singletonList("无法解压日志：" + e);
+            }
+        }
+        return logs.getStringArrayList(key);
+    }
+
     static String toText(List<Row> rows) {
         StringBuilder text = new StringBuilder("FCMFix 自查 ")
                 .append(new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ROOT).format(new Date()));
         for (Row row : rows) {
-            if (row.isSection()) {
-                text.append("\n\n【").append(row.title).append("】");
-                continue;
+            switch (row.kind) {
+                case SECTION:
+                    text.append("\n\n【").append(row.title).append("】");
+                    break;
+                case EVENT:
+                    text.append('\n').append(row.title).append(' ').append(row.detail);
+                    break;
+                case NOTE:
+                    text.append("\n• ").append(row.detail);
+                    break;
+                default:
+                    text.append('\n').append(markOf(row.level)).append(' ').append(row.title).append("：")
+                            .append(row.detail.replace("\n", "；"));
+                    if (row.hint != null) text.append("\n  → ").append(row.hint);
+                    if (row.copyExtra != null) text.append("\n  ").append(row.copyExtra);
             }
-            text.append('\n').append(markOf(row.level)).append(' ').append(row.title).append("：")
-                    .append(row.detail.replace("\n", "；"));
-            if (row.hint != null) text.append("\n  → ").append(row.hint);
-            if (row.copyExtra != null) text.append("\n  ").append(row.copyExtra);
         }
         return text.toString();
     }
 
     private void section(String title) {
-        rows.add(new Row(null, title, null, null, null, false));
+        rows.add(new Row(Kind.SECTION, page, Level.INFO, title, null, null, null, false));
+    }
+
+    private void note(String text) {
+        rows.add(new Row(Kind.NOTE, page, Level.INFO, null, text, null, null, false));
     }
 
     private Row add(Level level, String title, String detail, String hint) {
-        Row row = new Row(level, title, detail, hint, null, level == Level.FAIL || level == Level.WARN);
+        return add(level, title, detail, hint, null, level == Level.FAIL || level == Level.WARN);
+    }
+
+    private Row add(Level level, String title, String detail, String hint, Runnable action, boolean problem) {
+        Row row = new Row(Kind.CHECK, page, level, title, detail, hint, action, problem);
         rows.add(row);
         return row;
     }
 
     private void add(String title, Verdict verdict) {
         add(verdict.level, title, verdict.text, verdict.hint);
+    }
+
+    /** The FCM connection verdict, also shown at the top of the self-check page. */
+    static Verdict fcmVerdict(Bundle status) {
+        return SelfCheck.fcmConnection(
+                status.getInt(SelfCheck.KEY_FCM_STATE, SelfCheck.UNKNOWN),
+                status.getString(SelfCheck.KEY_FCM_REMOTE),
+                status.getLong(SelfCheck.KEY_FCM_SINCE),
+                status.getInt(SelfCheck.KEY_FCM_RECONNECTS),
+                status.getInt(SelfCheck.KEY_FCM_OUTAGES),
+                status.getLong(SelfCheck.KEY_FCM_LONGEST_OUTAGE),
+                status.getLong(SelfCheck.KEY_FCM_LAST_SEEN),
+                status.getLong(SelfCheck.KEY_FCM_MONITOR_START),
+                System.currentTimeMillis());
     }
 
     private void buildRows(XposedService service, Bundle status) {
@@ -244,36 +306,32 @@ final class CheckReport {
 
         section("Google 服务");
         if (systemAnswered) {
+            add("FCM 连接（系统框架检测）", fcmVerdict(status));
             add("GMS 联网策略", SelfCheck.gmsPolicy(status.getInt(SelfCheck.KEY_GMS_POLICY, SelfCheck.UNKNOWN)));
             add("GMS 待机分组", SelfCheck.gmsBucket(status.getInt(SelfCheck.KEY_GMS_BUCKET, SelfCheck.UNKNOWN)));
             add("GMS 电池优化白名单", SelfCheck.gmsDoze(status.getInt(SelfCheck.KEY_GMS_DOZE, SelfCheck.UNKNOWN)));
-            add("FCM 连接（系统框架检测）", SelfCheck.fcmConnection(
-                    status.getInt(SelfCheck.KEY_FCM_STATE, SelfCheck.UNKNOWN),
-                    status.getString(SelfCheck.KEY_FCM_REMOTE),
-                    status.getLong(SelfCheck.KEY_FCM_SINCE),
-                    status.getInt(SelfCheck.KEY_FCM_DROPS),
-                    status.getLong(SelfCheck.KEY_FCM_MONITOR_START),
-                    System.currentTimeMillis()));
         }
-        rows.add(new Row(Level.INFO, "FCM 连接状态", "点击打开 FCM Diagnostics，查看是否为 connected。"
+        add(Level.INFO, "FCM Diagnostics", "点击打开 GMS 自带的诊断页，看是否为 connected。"
                 + "亮屏时也一直 disconnected 通常是网络问题（DNS 被污染或 5228 端口被封），模块无法解决",
-                null, this::openFcmDiagnostics, false));
+                null, this::openFcmDiagnostics, false);
 
-        if (systemAnswered) {
-            addAppRows(status);
-            addEventRows(status);
-            section("系统信息（反馈问题时附上）");
-            StringBuilder info = new StringBuilder()
-                    .append("FCMFix ").append(versionName())
-                    .append("\nsdk=").append(Build.VERSION.SDK_INT)
-                    .append("\ndisplay=").append(Build.DISPLAY);
-            ArrayList<String> settings = status.getStringArrayList(SelfCheck.KEY_SETTINGS);
-            if (settings != null) for (String line : settings) info.append('\n').append(line);
-            if (status.containsKey(HookStatus.KEY_IGNORE_GMS_USER_SET)) {
-                info.append("\nIgnoreGmsUserSet=").append(status.getBoolean(HookStatus.KEY_IGNORE_GMS_USER_SET));
-            }
-            add(Level.INFO, "版本与系统设置", info.toString(), null);
+        if (!systemAnswered) return;
+        section("系统信息（反馈问题时附上）");
+        StringBuilder info = new StringBuilder()
+                .append("FCMFix ").append(versionName())
+                .append("\nsdk=").append(Build.VERSION.SDK_INT)
+                .append("\ndisplay=").append(Build.DISPLAY);
+        ArrayList<String> settings = status.getStringArrayList(SelfCheck.KEY_SETTINGS);
+        if (settings != null) for (String line : settings) info.append('\n').append(line);
+        if (status.containsKey(HookStatus.KEY_IGNORE_GMS_USER_SET)) {
+            info.append("\nIgnoreGmsUserSet=").append(status.getBoolean(HookStatus.KEY_IGNORE_GMS_USER_SET));
         }
+        add(Level.INFO, "版本与系统设置", info.toString(), null);
+
+        page = Page.APPS;
+        addAppRows(status);
+        page = Page.EVENTS;
+        addEventRows(status);
     }
 
     private void addScopeRow(XposedService service) {
@@ -285,9 +343,8 @@ final class CheckReport {
         } else {
             List<String> labels = new ArrayList<>();
             for (String scope : missing) labels.add("system".equals(scope) ? "系统框架" : "电池");
-            rows.add(new Row(Level.FAIL, "作用域", "缺少" + String.join("、", labels),
-                    "点击向 LSPosed 申请添加，确认后重启手机",
-                    () -> requestScope(activity, service, missing, activity::recreate), true));
+            add(Level.FAIL, "作用域", "缺少" + String.join("、", labels), "点击向 LSPosed 申请添加，确认后重启手机",
+                    () -> requestScope(activity, service, missing, activity::recreate), true);
         }
     }
 
@@ -344,6 +401,7 @@ final class CheckReport {
         }
     }
 
+    /** Problems first, each group by the most recent push. */
     private void addAppRows(Bundle status) {
         ArrayList<String> apps = status.getStringArrayList(SelfCheck.KEY_APPS);
         if (apps == null) return;
@@ -353,8 +411,9 @@ final class CheckReport {
             return;
         }
         PackageManager pm = activity.getPackageManager();
-        List<Row> appRows = new ArrayList<>();
-        List<Long> lastPushes = new ArrayList<>();
+        List<Row> attention = new ArrayList<>();
+        List<Row> normal = new ArrayList<>();
+        Map<Row, Long> lastPushes = new HashMap<>();
         for (String name : apps) {
             Bundle app = status.getBundle(SelfCheck.APP_PREFIX + name);
             if (app == null) continue;
@@ -368,47 +427,78 @@ final class CheckReport {
 
             long lastPush = app.getLong(SelfCheck.APP_LAST_PUSH);
             long count = app.getLong(SelfCheck.APP_PUSH_COUNT);
-            StringBuilder detail = new StringBuilder(notify.text);
-            if (bucket != null) detail.append(" · ").append(bucket.text);
-            detail.append('\n').append(lastPush == 0 ? "开机以来还没有收到推送"
-                    : "最近一次推送：" + DateUtils.getRelativeTimeSpanString(lastPush) + "（开机以来 " + count + " 次）");
-            detail.append('\n').append(app.getBoolean(SelfCheck.APP_RUNNING) ? "进程运行中"
-                    : app.getBoolean(SelfCheck.APP_STOPPED) ? "已停止（被划掉或强行停止），收到推送时由模块拉起" : "未运行");
+            String pushes = lastPush == 0 ? "开机以来还没有收到推送"
+                    : DateUtils.getRelativeTimeSpanString(lastPush) + "收到推送 · 开机以来 " + count + " 次";
+            String process = app.getBoolean(SelfCheck.APP_RUNNING) ? "运行中"
+                    : app.getBoolean(SelfCheck.APP_STOPPED) ? "已停止，推送时由模块拉起" : "未运行";
+            StringBuilder detail = new StringBuilder();
+            if (level != Level.OK) {
+                detail.append(notify.text);
+                if (bucket != null) detail.append(" · ").append(bucket.text);
+                detail.append('\n');
+            }
+            detail.append(pushes).append(" · ").append(process);
             String hint = notify.hint != null ? notify.hint : bucket != null ? bucket.hint : null;
             // Only a fully disabled app counts on the status card; a muted channel is often deliberate.
-            appRows.add(new Row(level, label, detail.toString(), hint, () -> openAppDetails(name),
-                    level == Level.FAIL));
-            lastPushes.add(lastPush);
+            Row row = new Row(Kind.CHECK, page, level, label, detail.toString(), hint, () -> openAppDetails(name),
+                    level == Level.FAIL);
+            row.packageName = name;
+            lastPushes.put(row, lastPush);
+            (level == Level.FAIL || level == Level.WARN ? attention : normal).add(row);
         }
-        // Problems first, then the most recently pushed.
-        List<Integer> order = new ArrayList<>();
-        for (int i = 0; i < appRows.size(); i++) order.add(i);
-        order.sort((a, b) -> {
-            int byLevel = Integer.compare(rank(appRows.get(a).level), rank(appRows.get(b).level));
+        Comparator<Row> order = (a, b) -> {
+            int byLevel = Integer.compare(rank(a.level), rank(b.level));
             return byLevel != 0 ? byLevel : Long.compare(lastPushes.get(b), lastPushes.get(a));
-        });
-        for (int index : order) rows.add(appRows.get(index));
-        add(Level.INFO, "推送记录说明",
-                "“最近一次推送”表示 GMS 已把消息交给该应用。收到了推送却没有弹出通知，问题通常在应用自己的通知设置或应用本身",
-                null);
+        };
+        attention.sort(order);
+        normal.sort(order);
+        if (!attention.isEmpty()) {
+            section("需要注意（" + attention.size() + "）");
+            rows.addAll(attention);
+        }
+        if (!normal.isEmpty()) {
+            section("正常（" + normal.size() + "）");
+            rows.addAll(normal);
+        }
+        note("“收到推送”表示 GMS 已把消息交给该应用。收到了推送却没有弹出通知，问题通常在应用自己的通知设置或应用本身。点击应用可打开它的系统设置");
     }
 
-    /** Newest first; the page shows the latest 40, the copied text all of them. */
+    /** One row per event, newest first, under a header for each day. */
     private void addEventRows(Bundle status) {
         ArrayList<String> events = status.getStringArrayList(SelfCheck.KEY_EVENTS);
         if (events == null) return;
         section("最近事件（开机以来，最新在上）");
-        if (events.isEmpty()) {
-            add(Level.INFO, "暂无事件", "熄屏、深度 Doze、网络切换、FCM 连接变化和收到推送会记录在这里", null);
+        SelfCheck.Timeline timeline = SelfCheck.mergeEvents(events,
+                status.getStringArrayList(SelfCheck.KEY_PUSH_EVENTS));
+        if (timeline.lines.isEmpty()) {
+            note("熄屏、深度 Doze、网络切换、FCM 连接变化和收到推送会记录在这里");
             return;
         }
-        List<String> newestFirst = new ArrayList<>(events);
-        Collections.reverse(newestFirst);
-        List<String> shown = newestFirst.subList(0, Math.min(40, newestFirst.size()));
-        Row row = add(Level.INFO, "时间线", String.join("\n", shown),
-                "FCM 断开前后是否刚熄屏、进入深度 Doze 或切换网络，通常能说明断开的原因");
-        if (newestFirst.size() > shown.size()) {
-            row.copyExtra = String.join("\n  ", newestFirst.subList(shown.size(), newestFirst.size()));
+        note("FCM 断线前后是否刚熄屏、进入深度 Doze 或切换网络，通常能说明原因。“重连”是旧连接换成了新连接，中间不影响推送");
+        String day = null;
+        for (String line : timeline.lines) {
+            // "MM-dd HH:mm:ss text"
+            boolean stamped = line.length() > 15 && line.charAt(5) == ' ' && line.charAt(14) == ' ';
+            String lineDay = stamped ? line.substring(0, 5) : "";
+            if (!lineDay.equals(day)) {
+                day = lineDay;
+                section(stamped ? dayLabel(lineDay) : "其他");
+            }
+            String text = stamped ? line.substring(15) : line;
+            Row row = new Row(Kind.EVENT, page, Level.INFO, stamped ? line.substring(6, 14) : "", text,
+                    null, null, false);
+            row.eventKind = SelfCheck.eventKind(text);
+            rows.add(row);
+        }
+        for (String text : timeline.notes) note(text);
+    }
+
+    /** "10-09" → "10 月 9 日". */
+    private static String dayLabel(String monthDay) {
+        try {
+            return Integer.parseInt(monthDay.substring(0, 2)) + " 月 " + Integer.parseInt(monthDay.substring(3, 5)) + " 日";
+        } catch (NumberFormatException e) {
+            return monthDay;
         }
     }
 

@@ -50,10 +50,14 @@ final class FcmPackages {
                 PackageManager pm = context.getPackageManager();
                 Set<String> found = new HashSet<>();
                 for (ResolveInfo info : pm.queryBroadcastReceivers(new Intent(FcmTrust.RECEIVE), FLAGS)) {
-                    if (info.activityInfo != null) found.add(info.activityInfo.packageName);
+                    if (info.activityInfo != null && FcmTrust.isAppUid(info.activityInfo.applicationInfo.uid)) {
+                        found.add(info.activityInfo.packageName);
+                    }
                 }
                 for (ResolveInfo info : pm.queryIntentServices(new Intent(MESSAGING_EVENT), FLAGS)) {
-                    if (info.serviceInfo != null) found.add(info.serviceInfo.packageName);
+                    if (info.serviceInfo != null && FcmTrust.isAppUid(info.serviceInfo.applicationInfo.uid)) {
+                        found.add(info.serviceInfo.packageName);
+                    }
                 }
                 packages = Collections.unmodifiableSet(found);
                 XposedModule.printLog("FCM apps scanned for auto-allow: " + found.size());
@@ -74,8 +78,9 @@ final class FcmPackages {
             if (snapshot == null) return;
             try {
                 PackageManager pm = context.getPackageManager();
-                boolean fcm = !pm.queryBroadcastReceivers(new Intent(FcmTrust.RECEIVE).setPackage(packageName), FLAGS).isEmpty()
-                        || !pm.queryIntentServices(new Intent(MESSAGING_EVENT).setPackage(packageName), FLAGS).isEmpty();
+                boolean fcm = isAppPackage(pm, packageName)
+                        && (!pm.queryBroadcastReceivers(new Intent(FcmTrust.RECEIVE).setPackage(packageName), FLAGS).isEmpty()
+                        || !pm.queryIntentServices(new Intent(MESSAGING_EVENT).setPackage(packageName), FLAGS).isEmpty());
                 if (fcm == snapshot.contains(packageName)) return;
                 Set<String> updated = new HashSet<>(snapshot);
                 if (fcm) updated.add(packageName);
@@ -86,5 +91,14 @@ final class FcmPackages {
                 XposedModule.printLog("FCM app check failed: " + packageName + ": " + e);
             }
         });
+    }
+
+    /** false for system-uid packages and for one that was just removed. */
+    private static boolean isAppPackage(PackageManager pm, String packageName) {
+        try {
+            return FcmTrust.isAppUid(pm.getPackageUid(packageName, 0));
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
+        }
     }
 }

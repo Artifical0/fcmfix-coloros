@@ -19,6 +19,15 @@
     <string name="self_check_loading">正在检查…</string>
     <string name="export_report">导出完整报告</string>
     <string name="copy_result">复制结果</string>
+    <string name="tab_overview">概览</string>
+    <string name="tab_apps_empty">应用</string>
+    <string name="tab_apps">应用 %d</string>
+    <string name="tab_events">时间线</string>
+    <string name="show_pushes">显示推送记录</string>
+    <string name="check_all_ok">一切正常</string>
+    <string name="check_one_problem">有 1 项需要处理</string>
+    <string name="check_problems">有 %d 项需要处理</string>
+    <string name="check_no_answer">系统框架没有响应</string>
     <string name="menu_self_check">自查与导出报告</string>
     <string name="menu_keep_notifications">阻止应用停止时自动清除通知</string>
     <string name="menu_icebox">允许唤醒被冰箱冻结的应用</string>

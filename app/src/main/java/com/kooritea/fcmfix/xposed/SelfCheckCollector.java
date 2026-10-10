@@ -15,6 +15,7 @@ import android.os.PowerManager;
 import android.provider.Settings;
 
 import com.kooritea.fcmfix.util.ConfigSnapshot;
+import com.kooritea.fcmfix.util.FcmTrust;
 import com.kooritea.fcmfix.util.PushRecords;
 import com.kooritea.fcmfix.util.SelfCheck;
 
@@ -41,7 +42,7 @@ final class SelfCheckCollector {
 
     static void recordPush(String packageName) {
         PUSHES.record(packageName, System.currentTimeMillis());
-        FcmConnectionMonitor.event("推送 → " + packageName);
+        FcmConnectionMonitor.push(packageName);
     }
 
     static void collect(Context context, ConfigSnapshot config, Bundle out) {
@@ -62,9 +63,13 @@ final class SelfCheckCollector {
         out.putInt(SelfCheck.KEY_FCM_STATE, FcmConnectionMonitor.state());
         out.putString(SelfCheck.KEY_FCM_REMOTE, FcmConnectionMonitor.remote());
         out.putLong(SelfCheck.KEY_FCM_SINCE, FcmConnectionMonitor.since());
-        out.putInt(SelfCheck.KEY_FCM_DROPS, FcmConnectionMonitor.drops());
+        out.putInt(SelfCheck.KEY_FCM_RECONNECTS, FcmConnectionMonitor.reconnects());
+        out.putInt(SelfCheck.KEY_FCM_OUTAGES, FcmConnectionMonitor.outages());
+        out.putLong(SelfCheck.KEY_FCM_LONGEST_OUTAGE, FcmConnectionMonitor.longestOutage());
+        out.putLong(SelfCheck.KEY_FCM_LAST_SEEN, FcmConnectionMonitor.lastSeen());
         out.putLong(SelfCheck.KEY_FCM_MONITOR_START, FcmConnectionMonitor.startedAt());
         out.putStringArrayList(SelfCheck.KEY_EVENTS, FcmConnectionMonitor.events());
+        out.putStringArrayList(SelfCheck.KEY_PUSH_EVENTS, FcmConnectionMonitor.pushes());
 
         ContentResolver resolver = context.getContentResolver();
         ArrayList<String> settings = new ArrayList<>();
@@ -91,6 +96,8 @@ final class SelfCheckCollector {
             } catch (PackageManager.NameNotFoundException e) {
                 continue;
             }
+            // A ticked system package such as "android" is harmless and gets no pushes; skip it.
+            if (!FcmTrust.isAppUid(info.uid)) continue;
             Bundle app = new Bundle();
             app.putBoolean(SelfCheck.APP_AUTO, !config.allowList.contains(name));
             app.putInt(SelfCheck.APP_NOTIFY, notificationsEnabled(notifications, name, info.uid));

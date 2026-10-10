@@ -23,6 +23,14 @@ public final class FcmTrust {
         return false;
     }
 
+    /**
+     * Auto-allow and the "FCM" badge skip system-uid packages such as "android": they declare
+     * FCM receivers but are never frozen and get no pushes of their own.
+     */
+    public static boolean isAppUid(int uid) {
+        return uid % 100000 >= 10000;
+    }
+
     public static boolean isAction(String action) {
         return RECEIVE.equals(action) || "com.google.firebase.MESSAGING_EVENT".equals(action)
                 || "com.google.firebase.INSTANCE_ID_EVENT".equals(action);

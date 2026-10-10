@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.appcompat.widget.SwitchCompat xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="10dp"
+    android:background="@drawable/bg_card"
+    android:minHeight="48dp"
+    android:paddingStart="14dp"
+    android:paddingEnd="14dp"
+    android:text="@string/show_pushes"
+    android:textColor="@color/textPrimary"
+    android:textSize="14sp" />

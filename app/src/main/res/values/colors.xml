@@ -15,4 +15,6 @@
     <color name="textAccent">#4338CA</color>
     <color name="surfacePressed">#EEF2FF</color>
     <color name="statusCardBackground">#F1F5F9</color>
+    <color name="hintBackground">#FFF7ED</color>
+    <color name="divider">#E8ECF3</color>
 </resources>

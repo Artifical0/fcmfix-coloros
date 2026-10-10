@@ -66,4 +66,11 @@ public class FcmTrustTest {
             assertFalse(trusted.get());
         } finally { restore.run(); }
     }
+
+    @Test public void systemUidPackagesAreNotFcmApps() {
+        assertFalse(FcmTrust.isAppUid(1000));
+        assertFalse(FcmTrust.isAppUid(1001000));
+        assertTrue(FcmTrust.isAppUid(10123));
+        assertTrue(FcmTrust.isAppUid(1010123));
+    }
 }

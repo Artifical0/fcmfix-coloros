@@ -4,7 +4,88 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
+    <!-- Verdict and page switcher stay put while the page below scrolls. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/surface"
+        android:elevation="2dp"
+        android:orientation="vertical"
+        android:paddingStart="16dp"
+        android:paddingTop="14dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/summary_mark"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/bg_summary_mark"
+                android:gravity="center"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:visibility="invisible" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/summary_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/self_check_loading"
+                    android:textColor="@color/textPrimary"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/summary_detail"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textColor="@color/textSecondary"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_segment"
+            android:orientation="horizontal"
+            android:padding="3dp">
+
+            <TextView
+                android:id="@+id/tab_overview"
+                style="@style/SegmentTab"
+                android:text="@string/tab_overview" />
+
+            <TextView
+                android:id="@+id/tab_apps"
+                style="@style/SegmentTab"
+                android:text="@string/tab_apps_empty" />
+
+            <TextView
+                android:id="@+id/tab_events"
+                style="@style/SegmentTab"
+                android:text="@string/tab_events" />
+        </LinearLayout>
+    </LinearLayout>
+
     <ScrollView
+        android:id="@+id/scroll"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1">
@@ -17,17 +98,7 @@
             android:paddingStart="12dp"
             android:paddingTop="4dp"
             android:paddingEnd="12dp"
-            android:paddingBottom="12dp">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:padding="32dp"
-                android:text="@string/self_check_loading"
-                android:textColor="@color/textSecondary"
-                android:textSize="14sp" />
-        </LinearLayout>
+            android:paddingBottom="16dp" />
     </ScrollView>
 
     <LinearLayout

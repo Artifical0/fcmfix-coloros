@@ -1,6 +1,10 @@
 package com.kooritea.fcmfix.util;
 
 import org.junit.Test;
+
+import java.util.Arrays;
+import java.util.Collections;
+
 import static org.junit.Assert.*;
 
 public class SelfCheckTest {
@@ -45,15 +49,42 @@ public class SelfCheckTest {
     @Test public void fcmConnectionVerdicts() {
         long start = 1_000_000;
         SelfCheck.Verdict connected = SelfCheck.fcmConnection(SelfCheck.FCM_CONNECTED, "1.2.3.4:5228",
-                start + 600_000, 2, start, start + 600_000 + 30 * 60_000);
+                start + 600_000, 3, 1, 4 * 60_000, start + 600_000 + 30 * 60_000, start,
+                start + 600_000 + 30 * 60_000);
         assertEquals(SelfCheck.Level.OK, connected.level);
         assertTrue(connected.text.contains("已持续 30 分钟"));
-        assertTrue(connected.text.contains("断开 2 次"));
+        assertTrue(connected.text.contains("重连 3 次，断线 1 次（最长约 4 分钟）"));
         SelfCheck.Verdict sinceBoot = SelfCheck.fcmConnection(SelfCheck.FCM_CONNECTED, "1.2.3.4:5228",
-                start + 1000, 0, start, start + 3_600_000);
+                start + 1000, 0, 0, 0, start + 3_600_000, start, start + 3_600_000);
         assertTrue(sinceBoot.text.contains("开始监测时已连接"));
-        assertEquals(SelfCheck.Level.WARN, SelfCheck.fcmConnection(SelfCheck.FCM_NONE, null, 0, 0, start, start).level);
-        assertEquals(SelfCheck.Level.WARN, SelfCheck.fcmConnection(SelfCheck.FCM_CONNECTING, "x", 0, 0, start, start).level);
-        assertEquals(SelfCheck.Level.UNKNOWN, SelfCheck.fcmConnection(SelfCheck.UNKNOWN, null, 0, 0, start, start).level);
+        assertTrue(sinceBoot.text.contains("没有断线或重连"));
+        SelfCheck.Verdict down = SelfCheck.fcmConnection(SelfCheck.FCM_NONE, null, 0, 0, 1, 0,
+                start, start, start + 5 * 60_000);
+        assertEquals(SelfCheck.Level.WARN, down.level);
+        assertTrue(down.text.contains("已断线约 5 分钟"));
+        assertEquals(SelfCheck.Level.WARN, SelfCheck.fcmConnection(SelfCheck.FCM_CONNECTING, "x", 0, 0, 0, 0, 0, start, start).level);
+        assertEquals(SelfCheck.Level.UNKNOWN, SelfCheck.fcmConnection(SelfCheck.UNKNOWN, null, 0, 0, 0, 0, 0, start, start).level);
+    }
+    @Test public void reconnectsAloneAreReassuring() {
+        assertEquals("开机以来重连 12 次，每次都马上连上了新连接，不影响推送", SelfCheck.fcmHistory(12, 0, 0));
+        assertEquals("开机以来断线 2 次（最长约 3 分钟）", SelfCheck.fcmHistory(0, 2, 3 * 60_000));
+    }
+    @Test public void eventKindsFollowMonitorPrefixes() {
+        assertEquals(SelfCheck.EventKind.PUSH, SelfCheck.eventKind(SelfCheck.EVENT_PUSH + "org.telegram.messenger"));
+        assertEquals(SelfCheck.EventKind.FCM_UP, SelfCheck.eventKind(SelfCheck.EVENT_FCM_RESTORED + " 1.2.3.4:5228"));
+        assertEquals(SelfCheck.EventKind.FCM_RECONNECT, SelfCheck.eventKind(SelfCheck.EVENT_FCM_RECONNECT + " x"));
+        assertEquals(SelfCheck.EventKind.FCM_DOWN, SelfCheck.eventKind(SelfCheck.EVENT_FCM_DOWN + "（x）"));
+        assertEquals(SelfCheck.EventKind.NETWORK, SelfCheck.eventKind("网络断开"));
+        assertEquals(SelfCheck.EventKind.DOZE, SelfCheck.eventKind(SelfCheck.EVENT_DOZE_EXIT));
+        assertEquals(SelfCheck.EventKind.SCREEN, SelfCheck.eventKind(SelfCheck.EVENT_SCREEN_OFF));
+    }
+    @Test public void mergeEventsInterleavesNewestFirst() {
+        SelfCheck.Timeline timeline = SelfCheck.mergeEvents(
+                Arrays.asList("…（更早的 96 条已丢弃）", "10-10 09:10:36 亮屏", "10-10 09:10:49 FCM 断线"),
+                Arrays.asList("10-10 09:07:08 推送 → a", "10-10 09:11:26 推送 → b"));
+        assertEquals(Arrays.asList("10-10 09:11:26 推送 → b", "10-10 09:10:49 FCM 断线",
+                "10-10 09:10:36 亮屏", "10-10 09:07:08 推送 → a"), timeline.lines);
+        assertEquals(Collections.singletonList("连接、网络、亮灭屏和 Doze 事件：更早的 96 条已丢弃"), timeline.notes);
+        assertTrue(SelfCheck.mergeEvents(null, null).lines.isEmpty());
     }
 }

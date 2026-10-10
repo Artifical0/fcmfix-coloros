@@ -14,4 +14,6 @@
     <color name="textAccent">#A5B4FC</color>
     <color name="surfacePressed">#2A2F3A</color>
     <color name="statusCardBackground">#262A33</color>
+    <color name="hintBackground">#3A2A12</color>
+    <color name="divider">#2A2F3A</color>
 </resources>

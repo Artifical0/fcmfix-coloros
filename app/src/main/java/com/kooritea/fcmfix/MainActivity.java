@@ -52,6 +52,7 @@ import java.util.Locale;
 import java.util.Set;
 
 import com.kooritea.fcmfix.util.ConfigSnapshot;
+import com.kooritea.fcmfix.util.FcmTrust;
 import com.kooritea.fcmfix.util.HookStatus;
 import com.kooritea.fcmfix.util.SelfCheck;
 import com.kooritea.fcmfix.util.IceboxUtils;
@@ -406,6 +407,10 @@ public class MainActivity extends AppCompatActivity {
         for (PackageInfo packageInfo : packageManager.getInstalledPackages(PackageManager.GET_RECEIVERS
                 | PackageManager.MATCH_DISABLED_COMPONENTS | PackageManager.MATCH_UNINSTALLED_PACKAGES)) {
             AppInfo appInfo = new AppInfo(packageInfo);
+            if (packageInfo.applicationInfo != null && !FcmTrust.isAppUid(packageInfo.applicationInfo.uid)) {
+                apps.add(appInfo);
+                continue;
+            }
             if (packageInfo.receivers != null) {
                 for (ActivityInfo receiverInfo : packageInfo.receivers) {
                     if (receiverInfo.name.equals("com.google.firebase.iid.FirebaseInstanceIdReceiver")) {

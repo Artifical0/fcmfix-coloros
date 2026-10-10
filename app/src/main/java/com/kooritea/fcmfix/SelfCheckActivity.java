@@ -5,21 +5,30 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
+import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
+import androidx.annotation.NonNull;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.SwitchCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
+import androidx.core.graphics.ColorUtils;
 
 import com.kooritea.fcmfix.util.HookStatus;
 import com.kooritea.fcmfix.util.SelfCheck;
@@ -34,8 +43,10 @@ import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -47,6 +58,9 @@ public class SelfCheckActivity extends AppCompatActivity {
     private Bundle result;
     private List<CheckReport.Row> rows = new ArrayList<>();
     private File lastReport;
+    private CheckReport.Page page = CheckReport.Page.OVERVIEW;
+    private boolean showPushes = true;
+    private final Map<String, Drawable> icons = new HashMap<>();
 
     private final ActivityResultLauncher<String> saveReport = registerForActivityResult(
             new ActivityResultContracts.CreateDocument("text/plain"), this::saveReportTo);
@@ -58,6 +72,21 @@ public class SelfCheckActivity extends AppCompatActivity {
         if (getSupportActionBar() != null) getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         findViewById(R.id.copy_result).setOnClickListener(v -> copyResult());
         findViewById(R.id.export_report).setOnClickListener(v -> chooseReportApp());
+        if (savedInstanceState != null) {
+            page = CheckReport.Page.values()[savedInstanceState.getInt("page", 0)];
+            showPushes = savedInstanceState.getBoolean("showPushes", true);
+        }
+        findViewById(R.id.tab_overview).setOnClickListener(v -> showPage(CheckReport.Page.OVERVIEW));
+        findViewById(R.id.tab_apps).setOnClickListener(v -> showPage(CheckReport.Page.APPS));
+        findViewById(R.id.tab_events).setOnClickListener(v -> showPage(CheckReport.Page.EVENTS));
+        updateTabs();
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putInt("page", page.ordinal());
+        outState.putBoolean("showPushes", showPushes);
     }
 
     /** Re-check on return, e.g. after turning an app's notifications on in its settings. */
@@ -82,35 +111,227 @@ public class SelfCheckActivity extends AppCompatActivity {
     private void render() {
         if (isFinishing() || isDestroyed()) return;
         rows = CheckReport.build(this, MainActivity.getXposedService(), result);
+        renderSummary();
+        updateTabs();
+        renderPage();
+        findViewById(R.id.copy_result).setEnabled(true);
+    }
+
+    private void showPage(CheckReport.Page target) {
+        if (page == target) return;
+        page = target;
+        updateTabs();
+        if (result != null) renderPage();
+        findViewById(R.id.scroll).scrollTo(0, 0);
+    }
+
+    private void updateTabs() {
+        findViewById(R.id.tab_overview).setSelected(page == CheckReport.Page.OVERVIEW);
+        findViewById(R.id.tab_apps).setSelected(page == CheckReport.Page.APPS);
+        findViewById(R.id.tab_events).setSelected(page == CheckReport.Page.EVENTS);
+        ArrayList<String> apps = result == null ? null : result.getStringArrayList(SelfCheck.KEY_APPS);
+        TextView appsTab = findViewById(R.id.tab_apps);
+        appsTab.setText(apps == null ? getString(R.string.tab_apps_empty) : getString(R.string.tab_apps, apps.size()));
+    }
+
+    /** The verdict at the top: the first problem, or the FCM connection when all is well. */
+    private void renderSummary() {
+        List<CheckReport.Row> problems = CheckReport.problems(rows);
+        boolean answered = result.containsKey(SelfCheck.KEY_CONFIG_LOADED);
+        SelfCheck.Level level;
+        String title;
+        String detail = null;
+        if (!problems.isEmpty()) {
+            boolean fail = false;
+            for (CheckReport.Row row : problems) fail |= row.level == SelfCheck.Level.FAIL;
+            level = fail ? SelfCheck.Level.FAIL : SelfCheck.Level.WARN;
+            title = problems.size() == 1 ? getString(R.string.check_one_problem)
+                    : getString(R.string.check_problems, problems.size());
+            CheckReport.Row first = problems.get(0);
+            detail = first.title + "：" + first.detail.split("\n")[0];
+        } else if (!answered) {
+            level = SelfCheck.Level.UNKNOWN;
+            title = getString(R.string.check_no_answer);
+        } else {
+            level = SelfCheck.Level.OK;
+            title = getString(R.string.check_all_ok);
+            String[] fcm = CheckReport.fcmVerdict(result).text.split("\n");
+            if (fcm.length >= 3) detail = "FCM " + fcm[0] + " · " + fcm[1] + "\n" + fcm[2];
+        }
+        TextView mark = findViewById(R.id.summary_mark);
+        styleMark(mark, level);
+        mark.setVisibility(View.VISIBLE);
+        ((TextView) findViewById(R.id.summary_title)).setText(title);
+        TextView detailView = findViewById(R.id.summary_detail);
+        detailView.setText(detail);
+        detailView.setVisibility(detail == null ? View.GONE : View.VISIBLE);
+    }
+
+    private void styleMark(TextView mark, SelfCheck.Level level) {
+        int color = ContextCompat.getColor(this, CheckReport.colorOf(level));
+        mark.setText(CheckReport.markOf(level));
+        mark.setTextColor(color);
+        mark.setBackgroundTintList(ColorStateList.valueOf(ColorUtils.setAlphaComponent(color, 0x26)));
+    }
+
+    /** Sections become cards; empty sections (e.g. after filtering pushes) are skipped. */
+    private void renderPage() {
         ViewGroup list = findViewById(R.id.check_list);
         list.removeAllViews();
         LayoutInflater inflater = LayoutInflater.from(this);
-        for (CheckReport.Row row : rows) {
-            if (row.isSection()) {
-                TextView header = new TextView(this);
-                header.setText(row.title);
-                header.setTextColor(ContextCompat.getColor(this, R.color.textAccent));
-                header.setTextSize(13);
-                int padding = Math.round(getResources().getDisplayMetrics().density * 4);
-                header.setPadding(padding, padding * 4, padding, padding);
-                list.addView(header);
-                continue;
-            }
-            View item = inflater.inflate(R.layout.check_item, list, false);
-            TextView mark = item.findViewById(R.id.mark);
-            mark.setText(CheckReport.markOf(row.level));
-            mark.setTextColor(ContextCompat.getColor(this, CheckReport.colorOf(row.level)));
-            ((TextView) item.findViewById(R.id.title)).setText(row.title);
-            ((TextView) item.findViewById(R.id.detail)).setText(row.detail);
-            TextView hint = item.findViewById(R.id.hint);
-            if (row.hint != null) {
-                hint.setText(row.hint);
-                hint.setVisibility(View.VISIBLE);
-            }
-            if (row.action != null) item.setOnClickListener(v -> row.action.run());
-            list.addView(item);
+        if (page == CheckReport.Page.EVENTS) {
+            SwitchCompat filter = (SwitchCompat) inflater.inflate(R.layout.timeline_filter, list, false);
+            filter.setChecked(showPushes);
+            filter.setOnCheckedChangeListener((button, checked) -> {
+                showPushes = checked;
+                renderPage();
+            });
+            list.addView(filter);
         }
-        findViewById(R.id.copy_result).setEnabled(true);
+        String pendingHeader = null;
+        ViewGroup card = null;
+        for (CheckReport.Row row : rows) {
+            if (row.page != page) continue;
+            switch (row.kind) {
+                case SECTION:
+                    pendingHeader = row.title;
+                    card = null;
+                    continue;
+                case NOTE:
+                    card = null;
+                    list.addView(note(row.detail));
+                    continue;
+                case EVENT:
+                    if (!showPushes && row.eventKind == SelfCheck.EventKind.PUSH) continue;
+                    break;
+                default:
+                    break;
+            }
+            if (card == null) {
+                if (pendingHeader != null) list.addView(header(pendingHeader));
+                pendingHeader = null;
+                card = newCard();
+                list.addView(card);
+            } else {
+                View divider = new View(this);
+                divider.setBackgroundColor(ContextCompat.getColor(this, R.color.divider));
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2));
+                params.setMarginStart(dp(row.kind == CheckReport.Kind.EVENT ? 14 : row.packageName != null ? 96 : 48));
+                card.addView(divider, params);
+            }
+            card.addView(row.kind == CheckReport.Kind.EVENT ? eventView(inflater, card, row) : checkView(inflater, card, row));
+        }
+        if (page != CheckReport.Page.OVERVIEW && !result.containsKey(SelfCheck.KEY_CONFIG_LOADED)) {
+            list.addView(note("系统框架没有响应，看不到这一页。请先在“概览”中处理模块问题，确认已勾选作用域并重启手机"));
+        }
+    }
+
+    private ViewGroup newCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackgroundResource(R.drawable.bg_card);
+        card.setClipToOutline(true);
+        return card;
+    }
+
+    private TextView header(String text) {
+        TextView header = new TextView(this);
+        header.setText(text);
+        header.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        header.setTextSize(13);
+        header.setTypeface(header.getTypeface(), Typeface.BOLD);
+        header.setPadding(dp(6), dp(18), dp(6), dp(6));
+        return header;
+    }
+
+    private TextView note(String text) {
+        TextView note = new TextView(this);
+        note.setText(text);
+        note.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+        note.setTextSize(12);
+        note.setPadding(dp(6), dp(8), dp(6), dp(4));
+        return note;
+    }
+
+    private View checkView(LayoutInflater inflater, ViewGroup parent, CheckReport.Row row) {
+        View item = inflater.inflate(R.layout.check_item, parent, false);
+        styleMark(item.findViewById(R.id.mark), row.level);
+        ((TextView) item.findViewById(R.id.title)).setText(row.title);
+        ((TextView) item.findViewById(R.id.detail)).setText(row.detail);
+        TextView hint = item.findViewById(R.id.hint);
+        if (row.hint != null) {
+            hint.setText(row.hint);
+            hint.setTextColor(ContextCompat.getColor(this, CheckReport.colorOf(row.level)));
+            hint.setVisibility(View.VISIBLE);
+        }
+        if (row.packageName != null) {
+            ImageView icon = item.findViewById(R.id.icon);
+            icon.setImageDrawable(icon(row.packageName));
+            icon.setVisibility(View.VISIBLE);
+        }
+        if (row.action != null) {
+            item.findViewById(R.id.chevron).setVisibility(View.VISIBLE);
+            item.setBackgroundResource(selectableBackground());
+            item.setOnClickListener(v -> row.action.run());
+        }
+        return item;
+    }
+
+    private View eventView(LayoutInflater inflater, ViewGroup parent, CheckReport.Row row) {
+        View item = inflater.inflate(R.layout.event_item, parent, false);
+        ((TextView) item.findViewById(R.id.time)).setText(row.title);
+        TextView text = item.findViewById(R.id.text);
+        text.setText(row.detail);
+        int color = ContextCompat.getColor(this, eventColor(row.eventKind));
+        item.findViewById(R.id.dot).setBackgroundTintList(ColorStateList.valueOf(color));
+        switch (row.eventKind) {
+            case FCM_UP:
+            case FCM_RECONNECT:
+            case FCM_DOWN:
+                text.setTextColor(color);
+                break;
+            case PUSH:
+                text.setTextColor(ContextCompat.getColor(this, R.color.textSecondary));
+                break;
+            default:
+                break;
+        }
+        return item;
+    }
+
+    private static int eventColor(SelfCheck.EventKind kind) {
+        switch (kind) {
+            case FCM_UP: return R.color.statusOk;
+            case FCM_RECONNECT: return R.color.statusWarning;
+            case FCM_DOWN: return R.color.statusFail;
+            case NETWORK: return R.color.textAccent;
+            case PUSH: return R.color.fcmBadgeText;
+            default: return R.color.textSecondary;
+        }
+    }
+
+    private Drawable icon(String packageName) {
+        Drawable icon = icons.get(packageName);
+        if (icon == null) {
+            try {
+                icon = getPackageManager().getApplicationIcon(packageName);
+            } catch (PackageManager.NameNotFoundException e) {
+                icon = getPackageManager().getDefaultActivityIcon();
+            }
+            icons.put(packageName, icon);
+        }
+        return icon;
+    }
+
+    private int selectableBackground() {
+        TypedValue value = new TypedValue();
+        getTheme().resolveAttribute(android.R.attr.selectableItemBackground, value, true);
+        return value.resourceId;
+    }
+
+    private int dp(int value) {
+        return Math.round(getResources().getDisplayMetrics().density * value);
     }
 
     private void copyResult() {

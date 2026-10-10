@@ -282,7 +282,7 @@ public abstract class XposedModule {
 
     private static Bundle addHookStatus(Bundle result, boolean logs) {
         String process = getSelfPackageName();
-        if (logs) result.putStringArrayList(process + HookStatus.LOGS_SUFFIX, XposedBridge.recentLogs());
+        if (logs) result.putByteArray(process + HookStatus.LOGS_SUFFIX, HookStatus.pack(XposedBridge.recentLogs()));
         result.putStringArrayList(process + HookStatus.ACTIVE_SUFFIX, OplusHooks.STATUS.active());
         result.putStringArrayList(process + HookStatus.FAILED_SUFFIX, OplusHooks.STATUS.failed());
         if ("android".equals(process)) {

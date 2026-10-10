@@ -21,7 +21,9 @@ import com.kooritea.fcmfix.util.SelfCheck;
 import java.io.FileDescriptor;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,13 +31,18 @@ import java.util.List;
 /**
  * Watches GMS's FCM socket (port 5228-5230) from system_server through sock_diag, and keeps a
  * short timeline of what usually explains a drop: screen, deep Doze, network changes, pushes.
+ * A socket replaced by a new one between two samples is a reconnect; a sample that finds none
+ * after one was up starts an outage, which ends at the first sample that finds one again.
  * Sampling uses an uptime Handler, so it never wakes the device; a reconnect made while the CPU
  * slept still shows up as a changed connection at the next sample.
  */
 final class FcmConnectionMonitor {
     private static final long SAMPLE_INTERVAL_MS = 60_000;
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss");
-    private static final LogRing EVENTS = new LogRing(120);
+    /** A reconnect after a longer unsampled gap (CPU asleep) also says when the old socket was last seen. */
+    private static final long QUICK_RECONNECT_MS = 150_000;
+    private static final LogRing EVENTS = new LogRing(300);
+    private static final LogRing PUSHES = new LogRing(150);
 
     private static Handler handler;
     private static int gmsUid = -1;
@@ -45,9 +52,10 @@ final class FcmConnectionMonitor {
     private static String connectionKey;
     private static String remote;
     private static long since;
-    private static LocalDateTime lastSeen;
-    private static long lastSeenMillis;
-    private static int drops;
+    private static long lastSeen;
+    private static int reconnects;
+    private static int outages;
+    private static long longestOutage;
     private static long startedAt;
 
     private FcmConnectionMonitor() {
@@ -74,11 +82,12 @@ final class FcmConnectionMonitor {
             @Override
             public void onReceive(Context receiverContext, Intent intent) {
                 String action = intent.getAction();
-                if (Intent.ACTION_SCREEN_ON.equals(action)) event("亮屏");
-                else if (Intent.ACTION_SCREEN_OFF.equals(action)) event("熄屏");
+                if (Intent.ACTION_SCREEN_ON.equals(action)) event(SelfCheck.EVENT_SCREEN_ON);
+                else if (Intent.ACTION_SCREEN_OFF.equals(action)) event(SelfCheck.EVENT_SCREEN_OFF);
                 else if (PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED.equals(action)) {
                     PowerManager power = receiverContext.getSystemService(PowerManager.class);
-                    event(power != null && power.isDeviceIdleMode() ? "进入深度 Doze" : "退出深度 Doze");
+                    event(power != null && power.isDeviceIdleMode()
+                            ? SelfCheck.EVENT_DOZE_ENTER : SelfCheck.EVENT_DOZE_EXIT);
                 }
                 sampleSoon();
             }
@@ -94,7 +103,7 @@ final class FcmConnectionMonitor {
                     String name = networkName(capabilities);
                     if (!name.equals(last)) {
                         last = name;
-                        event("网络：" + name);
+                        event(SelfCheck.EVENT_NETWORK + "：" + name);
                         sampleSoon();
                     }
                 }
@@ -102,7 +111,7 @@ final class FcmConnectionMonitor {
                 @Override
                 public void onLost(Network network) {
                     last = null;
-                    event("网络断开");
+                    event(SelfCheck.EVENT_NETWORK + "断开");
                 }
             }, handler);
         } catch (Throwable e) {
@@ -119,14 +128,31 @@ final class FcmConnectionMonitor {
         return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ? "VPN" : transport;
     }
 
+    private static String now() {
+        return LocalDateTime.now().format(TIME);
+    }
+
+    private static String format(long wallTime) {
+        return LocalDateTime.ofInstant(Instant.ofEpochMilli(wallTime), ZoneId.systemDefault()).format(TIME);
+    }
+
     static void event(String text) {
-        EVENTS.add(LocalDateTime.now().format(TIME) + " " + text);
+        EVENTS.add(now() + " " + text);
         XposedModule.printLog("event: " + text);
+    }
+
+    /** Not logged: BroadcastFix already logs each delivery. */
+    static void push(String packageName) {
+        PUSHES.add(now() + " " + SelfCheck.EVENT_PUSH + packageName);
     }
 
     /** Newest last. */
     static ArrayList<String> events() {
         return EVENTS.snapshot();
+    }
+
+    static ArrayList<String> pushes() {
+        return PUSHES.snapshot();
     }
 
     private static void sampleSoon() {
@@ -161,22 +187,33 @@ final class FcmConnectionMonitor {
         }
         long now = System.currentTimeMillis();
         String key = established == null ? null : established.key();
-        if (connectionKey != null && !connectionKey.equals(key)) {
-            drops++;
-            // The drop happened somewhere between the last sample that saw it and now.
-            event("FCM 连接断开（" + lastSeen.format(TIME) + " 时还在线，此前已连接 "
-                    + SelfCheck.duration(lastSeenMillis - since) + "）");
-        }
         if (key != null && !key.equals(connectionKey)) {
+            String address = established.remote.getHostAddress() + ":" + established.remotePort;
+            if (connectionKey != null) {
+                reconnects++;
+                String unseen = now - lastSeen > QUICK_RECONNECT_MS
+                        ? "，旧连接最后一次见到于 " + format(lastSeen) : "";
+                event(SelfCheck.EVENT_FCM_RECONNECT + " " + address + "（旧连接持续 "
+                        + SelfCheck.duration(lastSeen - since) + unseen + "）");
+            } else if (lastSeen > 0) {
+                // The outage ended somewhere between the previous sample and now.
+                long outage = now - lastSeen;
+                longestOutage = Math.max(longestOutage, outage);
+                event(SelfCheck.EVENT_FCM_RESTORED + " " + address + "（断线约 " + SelfCheck.duration(outage) + "）");
+            } else {
+                event(SelfCheck.EVENT_FCM_UP + " " + address);
+            }
             since = now;
-            remote = established.remote.getHostAddress() + ":" + established.remotePort;
-            event("FCM 已连接 " + remote);
+            remote = address;
+        } else if (key == null && connectionKey != null) {
+            outages++;
+            event(SelfCheck.EVENT_FCM_DOWN + "（" + format(lastSeen) + " 时还在线，此前已连接 "
+                    + SelfCheck.duration(lastSeen - since) + "）");
         }
         connectionKey = key;
         if (established != null) {
             state = SelfCheck.FCM_CONNECTED;
-            lastSeen = LocalDateTime.now();
-            lastSeenMillis = now;
+            lastSeen = now;
         } else {
             state = connecting != null ? SelfCheck.FCM_CONNECTING : SelfCheck.FCM_NONE;
             remote = connecting == null ? null
@@ -197,8 +234,22 @@ final class FcmConnectionMonitor {
         return state == SelfCheck.FCM_CONNECTED ? since : 0;
     }
 
-    static synchronized int drops() {
-        return drops;
+    static synchronized int reconnects() {
+        return reconnects;
+    }
+
+    static synchronized int outages() {
+        return outages;
+    }
+
+    /** Includes the outage still going on, if any. */
+    static synchronized long longestOutage() {
+        return state != SelfCheck.FCM_CONNECTED && lastSeen > 0
+                ? Math.max(longestOutage, System.currentTimeMillis() - lastSeen) : longestOutage;
+    }
+
+    static synchronized long lastSeen() {
+        return lastSeen;
     }
 
     static synchronized long startedAt() {

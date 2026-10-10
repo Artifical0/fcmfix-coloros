@@ -18,7 +18,7 @@ import io.github.libxposed.api.XposedInterface;
 public final class XposedBridge {
 
     private static XposedInterface xposedInterface;
-    private static final LogRing RECENT = new LogRing(400);
+    private static final LogRing RECENT = new LogRing(1000);
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss.SSS");
 
 
