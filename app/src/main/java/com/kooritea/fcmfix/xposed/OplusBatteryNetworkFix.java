@@ -6,6 +6,8 @@ import android.content.pm.PackageManager;
 import com.kooritea.fcmfix.libxposed.XC_MethodHook;
 import com.kooritea.fcmfix.libxposed.XposedBridge;
 import com.kooritea.fcmfix.libxposed.XposedHelpers;
+import com.kooritea.fcmfix.util.GoogleNetworkCompat;
+import com.kooritea.fcmfix.util.NightNetworkWhitelist;
 
 import java.lang.reflect.Method;
 
@@ -26,7 +28,7 @@ public class OplusBatteryNetworkFix extends XposedModule {
     private static final String USER_CHANGE_GMS_NETWORK_CONTROL = "oplus_user_change_gms_network_control";
     private static final String IGNORE_GMS_USER_SET = "IgnoreGmsUserSet";
     private static final String BATTERY_PACKAGE = "com.oplus.battery";
-    private static final String DEEP_SLEEP_CONTROLLER = "com.oplus.deepsleep.ControllerCenter";
+    private static final String APP_NET_CONTROL_MANAGER = "android.nwpower.OAppNetControlManager";
     private static final int POLICY_REJECT_ALL = 4;
     private static final int POLICY_NONE = 0;
     private static final String[] GOOGLE_NETWORK_PACKAGES = new String[]{
@@ -48,42 +50,40 @@ public class OplusBatteryNetworkFix extends XposedModule {
      * Battery deep sleep cuts the network for everything except its whitelists, which keep
      * HeyTap push (com.heytap.mcs), VoWiFi, P2P and opted-in IM apps online. Give the GMS UID
      * (shared with GSF) the same treatment so FCM is not the only push channel dropped at night.
-     * Both the package and the UID whitelist builders are covered; entries are UID strings.
+     * Hook the cross-jar manager call used by both ColorOS 16 and 17, after all whitelist
+     * builders. ColorOS 16 has no addPkgWhiteArray/addUidWhiteArray, and ColorOS 17's private
+     * builders may be inlined. The system_server hook remains a second boundary check.
      */
     private void startHookDeepSleepNetworkWhitelist() {
-        Class<?> controllerClass = XposedHelpers.findClassIfExists(DEEP_SLEEP_CONTROLLER, classLoader);
-        if (controllerClass == null) throw new NoClassDefFoundError(DEEP_SLEEP_CONTROLLER);
+        Class<?> managerClass = XposedHelpers.findClassIfExists(APP_NET_CONTROL_MANAGER, classLoader);
+        if (managerClass == null) throw new NoClassDefFoundError(APP_NET_CONTROL_MANAGER);
 
         int hooks = 0;
-        for (Method method : controllerClass.getDeclaredMethods()) {
-            Class<?>[] parameters = method.getParameterTypes();
-            if ((!"addPkgWhiteArray".equals(method.getName()) && !"addUidWhiteArray".equals(method.getName()))
-                    || parameters.length == 0 || !java.util.List.class.isAssignableFrom(parameters[0])) {
-                continue;
-            }
+        for (Method method : managerClass.getDeclaredMethods()) {
+            if (!GoogleNetworkCompat.isNetworkWhitelist(method)) continue;
             XposedBridge.hookMethod(method, new XC_MethodHook() {
                 @Override
-                @SuppressWarnings("unchecked")
-                protected void afterHookedMethod(MethodHookParam param) {
-                    if (!(param.args[0] instanceof java.util.List) || context == null) return;
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    if ((Integer) param.args[1] == 1
+                            || !(param.args[0] instanceof java.util.List) || context == null) return;
                     int uid;
                     try {
                         uid = context.getPackageManager().getPackageUid(GOOGLE_NETWORK_PACKAGES[0], 0);
                     } catch (PackageManager.NameNotFoundException e) {
                         return;
                     }
-                    java.util.List<String> whitelist = (java.util.List<String>) param.args[0];
-                    String entry = String.valueOf(uid);
-                    if (!whitelist.contains(entry)) {
-                        whitelist.add(entry);
-                        printLog("Oplus Battery deep-sleep network whitelist: GMS uid=" + uid, true);
-                    }
+                    if (uid < 0) return;
+                    java.util.List<Object> whitelist =
+                            NightNetworkWhitelist.withUid((java.util.List<?>) param.args[0], uid);
+                    if (whitelist == null) return;
+                    param.args[0] = whitelist;
+                    printLog("Oplus Battery deep-sleep network whitelist: GMS uid=" + uid, true);
                 }
             });
             hooks++;
             printLog("Oplus Battery deep-sleep whitelist hook active: " + method);
         }
-        if (hooks == 0) throw new NoSuchMethodError(DEEP_SLEEP_CONTROLLER + "#addPkgWhiteArray/addUidWhiteArray");
+        if (hooks == 0) throw new NoSuchMethodError(APP_NET_CONTROL_MANAGER + "#networkDisableWhiteList(List,int): int");
     }
 
     /**

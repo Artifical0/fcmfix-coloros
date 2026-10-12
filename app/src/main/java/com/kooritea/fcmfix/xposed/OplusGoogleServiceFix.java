@@ -6,6 +6,7 @@ import android.content.pm.PackageManager;
 import com.kooritea.fcmfix.libxposed.XC_MethodHook;
 import com.kooritea.fcmfix.libxposed.XposedBridge;
 import com.kooritea.fcmfix.libxposed.XposedHelpers;
+import com.kooritea.fcmfix.util.GoogleNetworkCompat;
 import com.kooritea.fcmfix.util.NightNetworkWhitelist;
 
 import java.lang.reflect.Method;
@@ -43,7 +44,6 @@ public class OplusGoogleServiceFix extends XposedModule {
     private static final String GOOGLE_RESTRICT_CHANGE = "oplus.intent.action.google_restrict_change";
     private static final String OSENSE_RES_MANAGER_SERVICE =
             "com.android.server.oplus.osense.OsenseResManagerService";
-    private static final String DEEP_SLEEP_GMS_CLEAN_REASON = "DeepSleepLogicDisNetRestore";
 
     public OplusGoogleServiceFix(ClassLoader classLoader) {
         super(classLoader);
@@ -63,9 +63,10 @@ public class OplusGoogleServiceFix extends XposedModule {
      * When the screen turns on after a battery deep-sleep "logical" network cut, Battery asks
      * Osense to clean GMS ("DeepSleepLogicDisNetRestore", strategy 2 = force-stop) so that it
      * reconnects. A force-stop also cancels every GMS alarm and leaves it stopped until a
-     * client binds it. GMS now stays on the deep-sleep network whitelist and gets
-     * GCM_RECONNECT after the restore, so skip only this force-stop. The Osense Binder
-     * implementation is an anonymous class of OsenseResManagerService.
+     * client binds it. Intercept the Binder implementation: ColorOS 16 uses the void
+     * requestSceneAction, ColorOS 17 also has boolean requestSceneActionSync. Both dispatch
+     * CommonExternalClean with strategy 2 to the force-stop policy. The sampled ColorOS 16
+     * Battery does not request this clean; the narrow guard is dormant on that build.
      */
     private void startHookDeepSleepGmsForceStop() {
         int hooks = 0;
@@ -73,29 +74,29 @@ public class OplusGoogleServiceFix extends XposedModule {
             Class<?> clazz = XposedHelpers.findClassIfExists(OSENSE_RES_MANAGER_SERVICE + "$" + i, classLoader);
             if (clazz == null) continue;
             for (Method method : clazz.getDeclaredMethods()) {
-                Class<?>[] types = method.getParameterTypes();
-                if (!"requestSceneActionSync".equals(method.getName()) || types.length != 1
-                        || types[0] != android.os.Bundle.class || !isBooleanType(method.getReturnType())) {
-                    continue;
-                }
-                XposedBridge.hookMethod(method, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) {
-                        if (!(param.args[0] instanceof android.os.Bundle)) return;
-                        android.os.Bundle bundle = (android.os.Bundle) param.args[0];
-                        if (!GOOGLE_GMS_PACKAGE.equals(bundle.getString("pkgName"))
-                                || !DEEP_SLEEP_GMS_CLEAN_REASON.equals(bundle.getString("reason"))) {
-                            return;
-                        }
-                        param.setResult(Boolean.FALSE);
-                        printLog("Oplus deep-sleep GMS force-stop skipped", true);
-                    }
-                });
+                if (!GoogleNetworkCompat.isSceneAction(method)) continue;
+                hookDeepSleepGmsForceStop(method, method.getReturnType() == void.class ? null : Boolean.FALSE);
                 hooks++;
-                printLog("Oplus deep-sleep GMS force-stop hook active: " + describeMethod(method));
             }
         }
-        if (hooks == 0) throw new NoSuchMethodError("OsenseResManagerService$*#requestSceneActionSync(Bundle)");
+        if (hooks == 0) throw new NoSuchMethodError(
+                "OsenseResManagerService$*#requestSceneAction(Bundle): void / requestSceneActionSync(Bundle): boolean");
+    }
+
+    private void hookDeepSleepGmsForceStop(Method method, Object skippedResult) {
+        XposedBridge.hookMethod(method, new XC_MethodHook() {
+            @Override
+            protected void beforeHookedMethod(MethodHookParam param) {
+                if (!(param.args[0] instanceof android.os.Bundle)) return;
+                android.os.Bundle bundle = (android.os.Bundle) param.args[0];
+                if (!GoogleNetworkCompat.shouldSkipGmsForceStop(bundle.getString("pkgName"),
+                        bundle.getString("reason"), bundle.getString("subAction"),
+                        bundle.getInt("strategy", -1))) return;
+                param.setResult(skippedResult);
+                printLog("Oplus deep-sleep GMS force-stop skipped", true);
+            }
+        });
+        printLog("Oplus deep-sleep GMS force-stop hook active: " + describeMethod(method));
     }
 
     /**
@@ -288,7 +289,7 @@ public class OplusGoogleServiceFix extends XposedModule {
      * include its GMS list (chain 9) and blocks their alarms, which drops the FCM connection.
      * Report only the Google core packages as whitelisted for that scene.
      */
-    private void startHookWeakSignalNetWhiteList() {
+    private void startHookWeakSignalNetWhiteList() throws NotApplicable {
         Class<?> managerClass = XposedHelpers.findClassIfExists(OPLUS_HANS_CONNECTIVITY_MANAGER, classLoader);
         if (managerClass == null) throw new NoClassDefFoundError(OPLUS_HANS_CONNECTIVITY_MANAGER);
 
@@ -310,7 +311,13 @@ public class OplusGoogleServiceFix extends XposedModule {
             hooks++;
             printLog("Oplus weak-signal whitelist hook active: " + describeMethod(method));
         }
-        if (hooks == 0) throw new NoSuchMethodError("isWeakSignalNetWhiteList(String)");
+        if (hooks == 0) {
+            if (GoogleNetworkCompat.isLegacyConnectivityWithoutWeakSignal(
+                    managerClass, android.os.Build.VERSION.SDK_INT)) {
+                throw new NotApplicable("已识别 ColorOS 16 蓝牙管控实现，未包含此弱信号限制功能");
+            }
+            throw new NoSuchMethodError("isWeakSignalNetWhiteList(String)");
+        }
     }
 
     private void startHookRegisterGmsRestrictObserver() {

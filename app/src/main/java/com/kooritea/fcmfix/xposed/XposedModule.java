@@ -285,6 +285,7 @@ public abstract class XposedModule {
         if (logs) result.putByteArray(process + HookStatus.LOGS_SUFFIX, HookStatus.pack(XposedBridge.recentLogs()));
         result.putStringArrayList(process + HookStatus.ACTIVE_SUFFIX, OplusHooks.STATUS.active());
         result.putStringArrayList(process + HookStatus.FAILED_SUFFIX, OplusHooks.STATUS.failed());
+        result.putStringArrayList(process + HookStatus.SKIPPED_SUFFIX, OplusHooks.STATUS.skipped());
         if ("android".equals(process)) {
             result.putBoolean(HookStatus.KEY_IGNORE_GMS_USER_SET, OplusBatteryNetworkFix.batteryIgnoresGmsUserSet());
         }

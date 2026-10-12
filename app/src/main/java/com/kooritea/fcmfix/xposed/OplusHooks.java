@@ -20,14 +20,25 @@ final class OplusHooks {
         void run() throws Throwable;
     }
 
+    /** Only for a positively identified firmware variant without the relevant restriction. */
+    static final class NotApplicable extends Exception {
+        NotApplicable(String reason) {
+            super(reason);
+        }
+    }
+
     /**
      * Installs one hook group; a firmware mismatch is logged and leaves the system behavior.
-     * The result is recorded for the in-app status, so a group must throw when nothing hooked.
+     * A group must throw when nothing hooked. A known absent feature uses NotApplicable;
+     * unknown classes/signatures and installation errors remain failures.
      */
     static void runHook(String name, HookAction action) {
         try {
             action.run();
             STATUS.recordActive(name);
+        } catch (NotApplicable e) {
+            STATUS.recordSkipped(name, e.getMessage());
+            XposedModule.printLog("hook not applicable " + name + ": " + e.getMessage());
         } catch (Throwable e) {
             String reason = e.getClass().getSimpleName() + ": " + e.getMessage();
             STATUS.recordFailed(name, reason);
