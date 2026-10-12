@@ -35,6 +35,12 @@ public class SelfCheckTest {
         assertEquals(SelfCheck.Level.OK, SelfCheck.appNotify(1, 0).level);
         assertEquals(SelfCheck.Level.UNKNOWN, SelfCheck.appNotify(SelfCheck.UNKNOWN, 0).level);
     }
+
+    @Test public void appNotifyOffIsOnlyInfoForAutoAllowedApps() {
+        assertEquals(SelfCheck.Level.INFO, SelfCheck.appNotify(0, 2, true).level);
+        assertEquals(SelfCheck.Level.FAIL, SelfCheck.appNotify(0, 2, false).level);
+        assertEquals(SelfCheck.Level.WARN, SelfCheck.appNotify(1, 2, true).level);
+    }
     @Test public void appBucketOnlyFlagsRestricted() {
         assertNull(SelfCheck.appBucket(40));
         assertNull(SelfCheck.appBucket(SelfCheck.UNKNOWN));

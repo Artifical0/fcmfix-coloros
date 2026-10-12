@@ -360,7 +360,7 @@ final class CheckReport {
             row = add(Level.FAIL, title, "未加载", "确认已勾选" + label + "作用域，并在勾选后重启过手机");
         } else if (!failed.isEmpty()) {
             row = add(Level.WARN, title, active.size() + " 项生效" + skippedSummary
-                            + "，" + failed.size() + " 项失配：\n" + String.join("\n", failed),
+                            + "，" + failed.size() + " 项失配\n" + String.join("\n", failed),
                     "失配的项目与当前固件不匹配，请导出完整报告反馈");
         } else {
             row = add(Level.OK, title, active.size() + " 项生效" + skippedSummary, null);
@@ -426,7 +426,7 @@ final class CheckReport {
             Bundle app = status.getBundle(SelfCheck.APP_PREFIX + name);
             if (app == null) continue;
             Verdict notify = SelfCheck.appNotify(app.getInt(SelfCheck.APP_NOTIFY, SelfCheck.UNKNOWN),
-                    app.getInt(SelfCheck.APP_BLOCKED_CHANNELS, SelfCheck.UNKNOWN));
+                    app.getInt(SelfCheck.APP_BLOCKED_CHANNELS, SelfCheck.UNKNOWN), app.getBoolean(SelfCheck.APP_AUTO));
             Verdict bucket = SelfCheck.appBucket(app.getInt(SelfCheck.APP_BUCKET, SelfCheck.UNKNOWN));
             Level level = notify.level;
             if (bucket != null && rank(bucket.level) < rank(level)) level = bucket.level;
