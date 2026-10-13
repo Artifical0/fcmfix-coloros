@@ -26,6 +26,9 @@ public final class InetDiag {
     private static final int NLMSG_HEADER = 16;
     private static final int REQUEST_LENGTH = NLMSG_HEADER + 56;
     private static final int MESSAGE_LENGTH = 72;
+    private static final int INET_DIAG_INFO = 2;
+    private static final int INET_DIAG_MARK = 15;
+    private static final int RTA_HEADER = 4;
 
     public static final class Socket {
         public final int state;
@@ -33,6 +36,13 @@ public final class InetDiag {
         public final int remotePort;
         public final InetAddress remote;
         public final int uid;
+        /** Socket mark (low 16 bits are Android's netId); -1 without CAP_NET_ADMIN. */
+        public int mark = -1;
+        /** From tcp_info; -1 when the kernel did not report it. */
+        public int unacked = -1;
+        public int retransmits = -1;
+        /** Milliseconds since data last arrived, counted in kernel jiffies (not while suspended). */
+        public long lastDataRecv = -1;
 
         Socket(int state, int localPort, int remotePort, InetAddress remote, int uid) {
             this.state = state;
@@ -61,7 +71,8 @@ public final class InetDiag {
         buffer.putInt(0);
         buffer.put((byte) family);
         buffer.put((byte) IPPROTO_TCP);
-        buffer.put((byte) 0);
+        // idiag_ext: also return tcp_info. The mark comes unasked when the caller has CAP_NET_ADMIN.
+        buffer.put((byte) (1 << (INET_DIAG_INFO - 1)));
         buffer.put((byte) 0);
         buffer.putInt(states);
         // inet_diag_sockid stays zero: no address or port filter, the caller filters replies.
@@ -89,7 +100,9 @@ public final class InetDiag {
                 throw new IllegalStateException("netlink error " + error);
             }
             if (type == SOCK_DIAG_BY_FAMILY && length >= NLMSG_HEADER + MESSAGE_LENGTH) {
-                out.add(readMessage(buffer));
+                Socket socket = readMessage(buffer);
+                readAttributes(buffer, start + NLMSG_HEADER + MESSAGE_LENGTH, start + length, socket);
+                out.add(socket);
             }
             buffer.position(start + ((length + 3) & ~3));
         }
@@ -112,5 +125,24 @@ public final class InetDiag {
             throw new IllegalStateException(e);
         }
         return new Socket(state, localPort, remotePort, remote, uid);
+    }
+
+    /** struct tcp_info offsets (include/uapi/linux/tcp.h): stable since Linux 2.6. */
+    private static void readAttributes(ByteBuffer buffer, int position, int end, Socket socket) {
+        while (position + RTA_HEADER <= end) {
+            int length = buffer.getShort(position) & 0xffff;
+            int type = buffer.getShort(position + 2) & 0xffff;
+            if (length < RTA_HEADER || position + length > end) return;
+            int data = position + RTA_HEADER;
+            int size = length - RTA_HEADER;
+            if (type == INET_DIAG_MARK && size >= 4) {
+                socket.mark = buffer.getInt(data);
+            } else if (type == INET_DIAG_INFO && size >= 60) {
+                socket.retransmits = buffer.get(data + 2) & 0xff;
+                socket.unacked = buffer.getInt(data + 24);
+                socket.lastDataRecv = buffer.getInt(data + 52) & 0xffffffffL;
+            }
+            position += (length + 3) & ~3;
+        }
     }
 }

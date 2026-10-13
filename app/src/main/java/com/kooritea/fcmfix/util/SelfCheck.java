@@ -25,6 +25,8 @@ public final class SelfCheck {
     /** GMS's FCM socket as system_server saw it: FCM_* state, remote, first-seen time. */
     public static final String KEY_FCM_STATE = "check.fcmState";
     public static final String KEY_FCM_REMOTE = "check.fcmRemote";
+    /** Why the established FCM socket looks dead; absent when it looks alive. */
+    public static final String KEY_FCM_STALL = "check.fcmStall";
     public static final String KEY_FCM_SINCE = "check.fcmSince";
     /** Connections replaced by a new one before the next sample; delivery was not interrupted. */
     public static final String KEY_FCM_RECONNECTS = "check.fcmReconnects";
@@ -44,6 +46,7 @@ public final class SelfCheck {
     public static final String EVENT_FCM_RECONNECT = "FCM 重连";
     public static final String EVENT_FCM_RESTORED = "FCM 恢复连接";
     public static final String EVENT_FCM_DOWN = "FCM 断线";
+    public static final String EVENT_FCM_STALL = "FCM 无响应";
     public static final String EVENT_NETWORK = "网络";
     public static final String EVENT_SCREEN_ON = "亮屏";
     public static final String EVENT_SCREEN_OFF = "熄屏";
@@ -171,7 +174,16 @@ public final class SelfCheck {
      */
     public static Verdict fcmConnection(int state, String remote, long since, int reconnects, int outages,
                                         long longestOutage, long lastSeen, long monitorStart, long now) {
+        return fcmConnection(state, remote, null, since, reconnects, outages, longestOutage, lastSeen, monitorStart, now);
+    }
+
+    public static Verdict fcmConnection(int state, String remote, String stall, long since, int reconnects, int outages,
+                                        long longestOutage, long lastSeen, long monitorStart, long now) {
         String history = fcmHistory(reconnects, outages, longestOutage);
+        if (state == FCM_CONNECTED && stall != null) {
+            return new Verdict(Level.WARN, "TCP 连接 " + remote + " 还在，但" + stall + "\n" + history,
+                    "GMS 可能并没有连上 FCM，打开 FCM Diagnostics 确认；一直如此可在亮屏时切换一次网络让 GMS 重连");
+        }
         if (state == FCM_CONNECTED) {
             String age = since - monitorStart < 120_000
                     ? "FCMFix 开始监测时已连接，至今 " + duration(now - since)
@@ -207,7 +219,7 @@ public final class SelfCheck {
         if (text.startsWith(EVENT_PUSH)) return EventKind.PUSH;
         if (text.startsWith(EVENT_FCM_UP) || text.startsWith(EVENT_FCM_RESTORED)) return EventKind.FCM_UP;
         if (text.startsWith(EVENT_FCM_RECONNECT)) return EventKind.FCM_RECONNECT;
-        if (text.startsWith(EVENT_FCM_DOWN)) return EventKind.FCM_DOWN;
+        if (text.startsWith(EVENT_FCM_DOWN) || text.startsWith(EVENT_FCM_STALL)) return EventKind.FCM_DOWN;
         if (text.startsWith(EVENT_NETWORK)) return EventKind.NETWORK;
         if (text.startsWith(EVENT_SCREEN_ON) || text.startsWith(EVENT_SCREEN_OFF)) return EventKind.SCREEN;
         if (text.startsWith(EVENT_DOZE_ENTER) || text.startsWith(EVENT_DOZE_EXIT)) return EventKind.DOZE;

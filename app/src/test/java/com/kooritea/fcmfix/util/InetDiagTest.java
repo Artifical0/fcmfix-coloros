@@ -21,6 +21,41 @@ public class InetDiagTest {
         assertEquals(10, request.get(16));
         assertEquals(6, request.get(17));
         assertEquals(6, request.getInt(20));
+        assertEquals(2, request.get(18));
+    }
+
+    @Test public void readsMarkAndTcpInfo() {
+        ByteBuffer buffer = ByteBuffer.allocate(512).order(LE);
+        int start = buffer.position();
+        putMessage(buffer, 2, InetDiag.TCP_ESTABLISHED, 40000, 5228, new byte[]{(byte) 192, (byte) 178, (byte) 230, (byte) 188}, 10123);
+        buffer.position(start + 16 + 72);
+        buffer.putShort((short) 8).putShort((short) 15).putInt(0x30083);        // INET_DIAG_MARK, netId 131
+        int info = buffer.position();
+        buffer.putShort((short) (4 + 104)).putShort((short) 2);                   // INET_DIAG_INFO
+        buffer.put(info + 4 + 2, (byte) 5);                                       // retransmits
+        buffer.putInt(info + 4 + 24, 3);                                          // unacked
+        buffer.putInt(info + 4 + 52, 45 * 60_000);                                // last_data_recv
+        buffer.position(info + 4 + 104);
+        buffer.putInt(start, buffer.position() - start);
+        buffer.putInt(20).putShort((short) 3).putShort((short) 2).putInt(1).putInt(0).putInt(0);
+        buffer.flip();
+        List<InetDiag.Socket> sockets = new ArrayList<>();
+        assertTrue(InetDiag.parse(buffer, sockets));
+        InetDiag.Socket socket = sockets.get(0);
+        assertEquals(131, socket.mark & 0xffff);
+        assertEquals(5, socket.retransmits);
+        assertEquals(3, socket.unacked);
+        assertEquals(45 * 60_000L, socket.lastDataRecv);
+    }
+
+    @Test public void withoutAttributesInfoIsUnknown() {
+        ByteBuffer buffer = ByteBuffer.allocate(256).order(LE);
+        putMessage(buffer, 2, InetDiag.TCP_ESTABLISHED, 40000, 5228, new byte[]{1, 2, 3, 4}, 10123);
+        buffer.flip();
+        List<InetDiag.Socket> sockets = new ArrayList<>();
+        InetDiag.parse(buffer, sockets);
+        assertEquals(-1, sockets.get(0).mark);
+        assertEquals(-1, sockets.get(0).lastDataRecv);
     }
 
     private static void putMessage(ByteBuffer buffer, int family, int state, int localPort,

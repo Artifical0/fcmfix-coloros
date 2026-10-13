@@ -7,6 +7,7 @@ import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.net.NetworkRequest;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.PowerManager;
@@ -30,7 +31,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Watches GMS's FCM socket (port 5228-5230, or 443 to mtalk) from system_server through sock_diag, and keeps a
@@ -66,6 +69,12 @@ final class FcmConnectionMonitor {
     /** Addresses known to be mtalk: seen on 5228-5230, or resolved from MTALK_HOST. */
     private static final Set<String> mtalkAddresses = new HashSet<>();
     private static long mtalkResolvedAt;
+    /** Why the current socket looks dead (FcmSockets.stall), and since when. */
+    private static String stall;
+    private static long stallSince;
+    /** netId -> "Wi‑Fi" / "移动数据" ..., to say which network GMS's socket is on. */
+    private static final Map<Integer, String> networkNames = new ConcurrentHashMap<>();
+    private static volatile int defaultNetId = -1;
 
     private FcmConnectionMonitor() {
     }
@@ -110,6 +119,7 @@ final class FcmConnectionMonitor {
                 @Override
                 public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
                     String name = networkName(capabilities);
+                    defaultNetId = netId(network);
                     if (!name.equals(last)) {
                         last = name;
                         event(SelfCheck.EVENT_NETWORK + "：" + name);
@@ -120,14 +130,45 @@ final class FcmConnectionMonitor {
                 @Override
                 public void onLost(Network network) {
                     last = null;
+                    defaultNetId = -1;
                     event(SelfCheck.EVENT_NETWORK + "断开");
                 }
             }, handler);
+            // Every network, not only the default: GMS may keep its socket on another one (issue #6).
+            connectivity.registerNetworkCallback(new NetworkRequest.Builder()
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build(),
+                    new ConnectivityManager.NetworkCallback() {
+                        @Override
+                        public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
+                            networkNames.put(netId(network), networkName(capabilities));
+                        }
+
+                        @Override
+                        public void onLost(Network network) {
+                            networkNames.remove(netId(network));
+                        }
+                    }, handler);
         } catch (Throwable e) {
             XposedModule.printLog("FCM monitor: network callback unavailable: " + e);
         }
         handler.post(FcmConnectionMonitor::sampleAndReschedule);
         XposedModule.printLog("FCM connection monitor started");
+    }
+
+    /** Network.getNetworkHandle() is the netId shifted left by 32 bits. */
+    private static int netId(Network network) {
+        return (int) (network.getNetworkHandle() >>> 32);
+    }
+
+    /** "1.2.3.4:5228（Wi‑Fi）"; says so when the socket is not on the default network. */
+    private static String describe(InetDiag.Socket socket) {
+        String address = socket.remote.getHostAddress() + ":" + socket.remotePort;
+        if (socket.mark < 0) return address;
+        int netId = socket.mark & 0xffff;
+        String name = networkNames.get(netId);
+        if (name == null) name = "netId " + netId;
+        int current = defaultNetId;
+        return address + "（" + name + (current > 0 && current != netId ? "，不是当前默认网络" : "") + "）";
     }
 
     private static String networkName(NetworkCapabilities capabilities) {
@@ -195,8 +236,10 @@ final class FcmConnectionMonitor {
             handler.post(FcmConnectionMonitor::resolveMtalk);
         }
         String key = established == null ? null : established.key();
+        String address = established == null ? null : describe(established);
+        String newStall = established == null ? null : FcmSockets.stall(established);
         if (key != null && !key.equals(connectionKey)) {
-            String address = established.remote.getHostAddress() + ":" + established.remotePort;
+            stall = null;
             if (connectionKey != null) {
                 reconnects++;
                 String unseen = now - lastSeen > QUICK_RECONNECT_MS
@@ -212,15 +255,22 @@ final class FcmConnectionMonitor {
                 event(SelfCheck.EVENT_FCM_UP + " " + address);
             }
             since = now;
-            remote = address;
         } else if (key == null && connectionKey != null) {
             outages++;
             event(SelfCheck.EVENT_FCM_DOWN + "（" + format(lastSeen) + " 时还在线，此前已连接 "
                     + SelfCheck.duration(lastSeen - since) + "）");
         }
+        if (key != null && newStall != null && stall == null) {
+            stallSince = now;
+            event(SelfCheck.EVENT_FCM_STALL + " " + address + "：" + newStall);
+        } else if (key != null && newStall == null && stall != null) {
+            event(SelfCheck.EVENT_FCM_RESTORED + " " + address + "（无响应约 " + SelfCheck.duration(now - stallSince) + "）");
+        }
+        stall = key == null ? null : newStall;
         connectionKey = key;
         if (established != null) {
             state = SelfCheck.FCM_CONNECTED;
+            remote = address;
             lastSeen = now;
         } else {
             state = connecting != null ? SelfCheck.FCM_CONNECTING : SelfCheck.FCM_NONE;
@@ -250,6 +300,10 @@ final class FcmConnectionMonitor {
 
     static synchronized String remote() {
         return remote;
+    }
+
+    static synchronized String stall() {
+        return state == SelfCheck.FCM_CONNECTED ? stall : null;
     }
 
     /** Wall time the current connection was first seen; 0 when not connected. */

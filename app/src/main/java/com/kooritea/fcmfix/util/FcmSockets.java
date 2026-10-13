@@ -15,6 +15,25 @@ public final class FcmSockets {
     private FcmSockets() {
     }
 
+    /** FCM heartbeats run every few to 28 minutes; this much awake time without data means a dead socket. */
+    public static final long SILENT_MS = 30 * 60_000;
+    /** Consecutive RTO retransmissions of unacknowledged data. */
+    public static final int STUCK_RETRANSMITS = 3;
+
+    /**
+     * Why an established socket does not carry FCM, or null when it looks alive. The kernel can
+     * keep a socket ESTABLISHED while GMS itself is still "Connecting" (issue #6).
+     */
+    public static String stall(InetDiag.Socket socket) {
+        if (socket.unacked > 0 && socket.retransmits >= STUCK_RETRANSMITS) {
+            return "发出的数据没有得到回应（已连续重传 " + socket.retransmits + " 次）";
+        }
+        if (socket.lastDataRecv >= SILENT_MS) {
+            return "约 " + SelfCheck.duration(socket.lastDataRecv) + "没有收到任何数据（不计休眠时间）";
+        }
+        return null;
+    }
+
     public static boolean isFcmPort(int port) {
         return port >= 5228 && port <= 5230;
     }

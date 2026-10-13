@@ -272,6 +272,7 @@ final class CheckReport {
         return SelfCheck.fcmConnection(
                 status.getInt(SelfCheck.KEY_FCM_STATE, SelfCheck.UNKNOWN),
                 status.getString(SelfCheck.KEY_FCM_REMOTE),
+                status.getString(SelfCheck.KEY_FCM_STALL),
                 status.getLong(SelfCheck.KEY_FCM_SINCE),
                 status.getInt(SelfCheck.KEY_FCM_RECONNECTS),
                 status.getInt(SelfCheck.KEY_FCM_OUTAGES),

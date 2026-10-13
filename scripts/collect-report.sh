@@ -84,6 +84,24 @@ report() {
     done
   done
 
+  # The kernel can keep GMS's socket ESTABLISHED while GMS itself sits in "Connecting" (issue #6):
+  # unacked + retrans or a large lastrcv show a dead socket, and the default network vs the one
+  # GMS follows (FCM Diagnostics "GcmNetwork{netId ...}") shows whether it uses the wrong network.
+  section "GMS 的 FCM 连接（unacked/retrans 不为 0、lastrcv 很大说明连接无响应）"
+  gms_uid=$(pm list packages -U "$GMS" | grep "^package:$GMS " | grep -o 'uid:[0-9]*' | cut -d: -f2)
+  if command -v ss >/dev/null 2>&1; then
+    ss -tnie state established state syn-sent \
+      '( dport = :5228 or dport = :5229 or dport = :5230 or dport = :443 )' | grep -A1 "uid:$gms_uid " | head -n 40
+  else
+    echo "-- 没有 ss，/proc/net/tcp*（端口 146C-146E 即 5228-5230）"
+    cat /proc/net/tcp /proc/net/tcp6 | awk -v u="$gms_uid" '$8 == u && $3 ~ /:146[CDE]$/'
+  fi
+  echo "-- 网络（GMS 使用的 netId 见 FCM Diagnostics 的 GcmNetwork{…}）"
+  dumpsys connectivity | grep -E "Active default network|^ *NetworkAgentInfo\{" | cut -c1-240 | head -n 12
+  dumpsys netpolicy | grep -E "UID=$gms_uid " | head -n 5
+  echo "-- GMS 连接日志"
+  logcat -d -b main,system | grep -iE "gcm|mcs" | grep -v "\[fcmfix\]" | tail -n 150
+
   section "FCMFix / ColorOS Google 限制日志"
   # Match the module's "[fcmfix]" prefix, not the package name io.github.artifical0.fcmfix.coloros,
   # which window-manager logs mention all the time.

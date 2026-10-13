@@ -62,6 +62,7 @@ final class SelfCheckCollector {
         FcmConnectionMonitor.sample();
         out.putInt(SelfCheck.KEY_FCM_STATE, FcmConnectionMonitor.state());
         out.putString(SelfCheck.KEY_FCM_REMOTE, FcmConnectionMonitor.remote());
+        out.putString(SelfCheck.KEY_FCM_STALL, FcmConnectionMonitor.stall());
         out.putLong(SelfCheck.KEY_FCM_SINCE, FcmConnectionMonitor.since());
         out.putInt(SelfCheck.KEY_FCM_RECONNECTS, FcmConnectionMonitor.reconnects());
         out.putInt(SelfCheck.KEY_FCM_OUTAGES, FcmConnectionMonitor.outages());

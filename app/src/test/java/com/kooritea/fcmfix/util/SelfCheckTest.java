@@ -36,6 +36,14 @@ public class SelfCheckTest {
         assertEquals(SelfCheck.Level.UNKNOWN, SelfCheck.appNotify(SelfCheck.UNKNOWN, 0).level);
     }
 
+    @Test public void stalledSocketIsAWarning() {
+        SelfCheck.Verdict stalled = SelfCheck.fcmConnection(SelfCheck.FCM_CONNECTED, "1.2.3.4:5228（Wi‑Fi）",
+                "约 45 分钟没有收到任何数据（不计休眠时间）", 0, 0, 0, 0, 0, 0, 1000);
+        assertEquals(SelfCheck.Level.WARN, stalled.level);
+        assertTrue(stalled.text.startsWith("TCP 连接 1.2.3.4:5228（Wi‑Fi） 还在"));
+        assertEquals(SelfCheck.EventKind.FCM_DOWN, SelfCheck.eventKind(SelfCheck.EVENT_FCM_STALL + " 1.2.3.4:5228"));
+    }
+
     @Test public void appNotifyOffIsOnlyInfoForAutoAllowedApps() {
         assertEquals(SelfCheck.Level.INFO, SelfCheck.appNotify(0, 2, true).level);
         assertEquals(SelfCheck.Level.FAIL, SelfCheck.appNotify(0, 2, false).level);

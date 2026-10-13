@@ -57,4 +57,18 @@ public class FcmSocketsTest {
         assertNull(pick.established);
         assertEquals(5229, pick.connecting.remotePort);
     }
+
+    @Test public void stallNeedsRetransmitsOrLongSilence() throws Exception {
+        InetDiag.Socket socket = socket(InetDiag.TCP_ESTABLISHED, 40000, "108.177.97.188", 5228, GMS);
+        assertNull(FcmSockets.stall(socket));
+        socket.unacked = 1;
+        socket.retransmits = 1;
+        socket.lastDataRecv = 5 * 60_000;
+        assertNull(FcmSockets.stall(socket));
+        socket.retransmits = 3;
+        assertTrue(FcmSockets.stall(socket).contains("重传 3 次"));
+        socket.unacked = 0;
+        socket.lastDataRecv = 45 * 60_000;
+        assertTrue(FcmSockets.stall(socket).contains("45 分钟"));
+    }
 }
