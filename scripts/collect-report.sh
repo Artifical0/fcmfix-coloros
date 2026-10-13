@@ -13,6 +13,13 @@ MODULE=io.github.artifical0.fcmfix.coloros
 
 section() { echo; echo "== $1"; }
 
+# pm first; the data directory's owner still works when cmd cannot be reached.
+uid_of() {
+  uid=$(pm list packages -U "$1" 2>/dev/null | grep "^package:$1 " | grep -o 'uid:[0-9]*' | cut -d: -f2)
+  [ -n "$uid" ] || uid=$(stat -c %u "/data/data/$1" 2>/dev/null)
+  echo "$uid"
+}
+
 report() {
   echo "FCMFix report $(date '+%Y-%m-%d %H:%M:%S %z')"
 
@@ -31,7 +38,7 @@ report() {
   # not in AOSP netpolicy. Transaction 2 is getUidPolicy(uid).
   section "Google 核心包联网策略（0 不限制，1 禁移动数据，2 禁 Wi-Fi，4 全部禁止）"
   for p in com.google.android.gms com.google.android.gsf com.android.vending com.google.android.configupdater; do
-    uid=$(pm list packages -U "$p" | grep "^package:$p " | grep -o 'uid:[0-9]*' | cut -d: -f2)
+    uid=$(uid_of "$p")
     if [ -z "$uid" ]; then echo "$p 未安装"; continue; fi
     raw=$(service call networking_control 2 i32 "$uid" 2>&1)
     # Some builds print a tab after "Parcel(": Result: Parcel(<tab>00000000 00000004   '........')
@@ -88,10 +95,12 @@ report() {
   # unacked + retrans or a large lastrcv show a dead socket, and the default network vs the one
   # GMS follows (FCM Diagnostics "GcmNetwork{netId ...}") shows whether it uses the wrong network.
   section "GMS 的 FCM 连接（unacked/retrans 不为 0、lastrcv 很大说明连接无响应）"
-  gms_uid=$(pm list packages -U "$GMS" | grep "^package:$GMS " | grep -o 'uid:[0-9]*' | cut -d: -f2)
+  gms_uid=$(uid_of "$GMS")
+  echo "GMS uid=$gms_uid"
   if command -v ss >/dev/null 2>&1; then
-    ss -tnie state established state syn-sent \
-      '( dport = :5228 or dport = :5229 or dport = :5230 or dport = :443 )' | grep -A1 "uid:$gms_uid " | head -n 40
+    sockets=$(ss -tnie state established state syn-sent \
+      '( dport = :5228 or dport = :5229 or dport = :5230 or dport = :443 )' | grep -A1 "uid:$gms_uid ")
+    if [ -n "$sockets" ]; then echo "$sockets" | head -n 40; else echo "GMS 没有到 5228-5230 / 443 的连接"; fi
   else
     echo "-- 没有 ss，/proc/net/tcp*（端口 146C-146E 即 5228-5230）"
     cat /proc/net/tcp /proc/net/tcp6 | awk -v u="$gms_uid" '$8 == u && $3 ~ /:146[CDE]$/'
@@ -99,8 +108,13 @@ report() {
   echo "-- 网络（GMS 使用的 netId 见 FCM Diagnostics 的 GcmNetwork{…}）"
   dumpsys connectivity | grep -E "Active default network|^ *NetworkAgentInfo\{" | cut -c1-240 | head -n 12
   dumpsys netpolicy | grep -E "UID=$gms_uid " | head -n 5
-  echo "-- GMS 连接日志"
-  logcat -d -b main,system | grep -iE "gcm|mcs" | grep -v "\[fcmfix\]" | tail -n 150
+  echo "-- GMS 连接日志（FCM 运行在 com.google.android.gms.persistent 进程）"
+  gms_pid=$(pidof com.google.android.gms.persistent)
+  if [ -n "$gms_pid" ]; then
+    logcat -d -b main,system --pid="$gms_pid" | grep -iE "gcm|mcs|heartbeat|connect" | tail -n 150
+  else
+    echo "com.google.android.gms.persistent 未运行"
+  fi
 
   section "FCMFix / ColorOS Google 限制日志"
   # Match the module's "[fcmfix]" prefix, not the package name io.github.artifical0.fcmfix.coloros,
@@ -125,9 +139,12 @@ report() {
   done
 }
 
+# pm / settings / am go through cmd, which hands its stdin/stdout/stderr to system_server. A
+# terminal app's pty or a file on /sdcard cannot be passed there ("Failed transaction"), so run
+# with stdin from /dev/null and stdout/stderr on a pipe, as the in-app export does.
 if [ "$OUT" = "-" ]; then
-  report "$@" 2>&1
+  report "$@" < /dev/null 2>&1 | cat
 else
-  report "$@" > "$OUT" 2>&1
+  report "$@" < /dev/null 2>&1 | cat > "$OUT"
   echo "已保存到 $OUT"
 fi
