@@ -108,13 +108,20 @@ report() {
   echo "-- 网络（GMS 使用的 netId 见 FCM Diagnostics 的 GcmNetwork{…}）"
   dumpsys connectivity | grep -E "Active default network|^ *NetworkAgentInfo\{" | cut -c1-240 | head -n 12
   dumpsys netpolicy | grep -E "UID=$gms_uid " | head -n 5
-  echo "-- GMS 连接日志（FCM 运行在 com.google.android.gms.persistent 进程）"
-  gms_pid=$(pidof com.google.android.gms.persistent)
-  if [ -n "$gms_pid" ]; then
-    logcat -d -b main,system --pid="$gms_pid" | grep -iE "gcm|mcs|heartbeat|connect" | tail -n 150
+  # A local proxy's TUN (Clash/Surfing use 198.18.0.0/15) can hold GMS's socket open after the
+  # proxy stops or its upstream dies; the socket's local address above then shows 198.18.x.
+  echo "-- TUN 接口（本机代理）"
+  ip -o addr show 2>/dev/null | grep -iE " tun|198\.18\.|198\.19\." | awk '{print $2, $3, $4}' || true
+  echo "-- GMS 连接日志（按 GMS uid，FCM 所在进程名因版本而异）"
+  gms_log=$(logcat -d -b main,system --uid="$gms_uid" 2>/dev/null)
+  if [ -z "$gms_log" ]; then
+    # Older logcat without --uid: every process of the GMS uid.
+    for pid in $(pgrep -u "$gms_uid" 2>/dev/null); do
+      logcat -d -b main,system --pid="$pid" 2>/dev/null
+    done | sort
   else
-    echo "com.google.android.gms.persistent 未运行"
-  fi
+    echo "$gms_log"
+  fi | grep -iE "gcm|mcs|heartbeat|connect" | tail -n 150
 
   section "FCMFix / ColorOS Google 限制日志"
   # Match the module's "[fcmfix]" prefix, not the package name io.github.artifical0.fcmfix.coloros,
