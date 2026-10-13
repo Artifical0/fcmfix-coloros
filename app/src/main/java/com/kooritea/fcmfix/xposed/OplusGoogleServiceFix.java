@@ -291,7 +291,13 @@ public class OplusGoogleServiceFix extends XposedModule {
      */
     private void startHookWeakSignalNetWhiteList() throws NotApplicable {
         Class<?> managerClass = XposedHelpers.findClassIfExists(OPLUS_HANS_CONNECTIVITY_MANAGER, classLoader);
-        if (managerClass == null) throw new NoClassDefFoundError(OPLUS_HANS_CONNECTIVITY_MANAGER);
+        if (managerClass == null) {
+            if (GoogleNetworkCompat.isHansWithoutWeakSignal(
+                    XposedHelpers.findClassIfExists("com.android.server.am.OplusHansManager", classLoader))) {
+                throw new NotApplicable("固件没有弱信号联网限制（没有 Hans 联网管控，Hans 中也没有弱信号场景）");
+            }
+            throw new NoClassDefFoundError(OPLUS_HANS_CONNECTIVITY_MANAGER);
+        }
 
         int hooks = 0;
         for (Method method : managerClass.getDeclaredMethods()) {

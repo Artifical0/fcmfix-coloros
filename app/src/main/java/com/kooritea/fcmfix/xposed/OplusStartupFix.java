@@ -6,6 +6,7 @@ import android.content.pm.ApplicationInfo;
 import com.kooritea.fcmfix.libxposed.XC_MethodHook;
 import com.kooritea.fcmfix.libxposed.XposedBridge;
 import com.kooritea.fcmfix.libxposed.XposedHelpers;
+import com.kooritea.fcmfix.util.GoogleNetworkCompat;
 import com.kooritea.fcmfix.util.FcmTrust;
 
 import java.lang.reflect.Method;
@@ -229,9 +230,19 @@ public class OplusStartupFix extends XposedModule {
     }
 
     /** Cloud "malicious app" lists can block a whole package's receivers, FCM included. */
-    private void startHookMaliciousBroadcast() {
+    private void startHookMaliciousBroadcast() throws NotApplicable {
+        requireMaliciousPolicy();
         hookTrustedBroadcastGate(OPLUS_MALICIOUS_RESTRICT_POLICY, "shouldPreventBroadcastByMaliciousCheck",
                 false, OplusStartupFix::receiverPackage);
+    }
+
+    /** Older firmware without the policy class checks the list for activity starts only. */
+    private void requireMaliciousPolicy() throws NotApplicable {
+        if (XposedHelpers.findClassIfExists(OPLUS_MALICIOUS_RESTRICT_POLICY, classLoader) != null) return;
+        if (GoogleNetworkCompat.isActivityOnlyMaliciousCheck(
+                XposedHelpers.findClassIfExists(OPLUS_APP_STARTUP_MANAGER, classLoader))) {
+            throw new NotApplicable("固件的可疑组件名单只拦截 Activity 启动，不拦截广播和服务");
+        }
     }
 
     /** Link-start limits count GMS as the launcher when it wakes many apps with FCM. */
@@ -245,7 +256,8 @@ public class OplusStartupFix extends XposedModule {
      * ProcessRecord are considered: GMS binding the target for FCM/GCM, or the target binding
      * its own FirebaseMessagingService inside its FCM delivery window (current Firebase SDKs).
      */
-    private void startHookMaliciousService() {
+    private void startHookMaliciousService() throws NotApplicable {
+        requireMaliciousPolicy();
         Class<?> policyClass = XposedHelpers.findClassIfExists(OPLUS_MALICIOUS_RESTRICT_POLICY, classLoader);
         if (policyClass == null) throw new NoClassDefFoundError(OPLUS_MALICIOUS_RESTRICT_POLICY);
 

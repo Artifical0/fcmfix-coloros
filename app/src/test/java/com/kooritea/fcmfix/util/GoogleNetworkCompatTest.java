@@ -96,4 +96,47 @@ public class GoogleNetworkCompatTest {
         assertFalse(GoogleNetworkCompat.isLegacyConnectivityWithoutWeakSignal(ChangedWeakSignalConnectivity.class, 36));
         assertFalse(GoogleNetworkCompat.isLegacyConnectivityWithoutWeakSignal(ConnectivityWithFirewallField.class, 36));
     }
+
+    static class HansWithoutWeakSignal {
+        private boolean mStrictMode;
+        void setFirewallRuleDeny(int uid) {}
+    }
+
+    static class HansWithWeakSignal {
+        static final int STRICT_MODE_SCENE_WEAK_SIGNAL = 5;
+        void setFirewallRuleDeny(int uid) {}
+    }
+
+    @Test public void weakSignalAbsentOnlyWhenHansHasNoWeakScene() {
+        assertTrue(GoogleNetworkCompat.isHansWithoutWeakSignal(HansWithoutWeakSignal.class));
+        assertFalse(GoogleNetworkCompat.isHansWithoutWeakSignal(HansWithWeakSignal.class));
+        assertFalse(GoogleNetworkCompat.isHansWithoutWeakSignal(null));
+    }
+
+    static class ActivityOnlyStartup {
+        private boolean preventByMaliciousCompStartegy(int callingUid, int userId, String pkg, String cls) { return false; }
+        boolean shouldPreventStartActivity() { return false; }
+        void dumpMaliciousConfig(java.io.PrintWriter pw) {}
+    }
+
+    static class StartupWithBroadcastMaliciousCheck {
+        private boolean preventByMaliciousCompStartegy(int callingUid, int userId, String pkg, String cls) { return false; }
+        boolean shouldPreventBroadcastByMaliciousCheck(Object record) { return false; }
+    }
+
+    static class StartupChangedSignature {
+        private boolean preventByMaliciousCompStartegy(int callingUid, String pkg) { return false; }
+    }
+
+    static class StartupWithoutMaliciousCheck {
+        boolean shouldPreventStartActivity() { return false; }
+    }
+
+    @Test public void maliciousCheckNotApplicableOnlyForTheActivityOnlyShape() {
+        assertTrue(GoogleNetworkCompat.isActivityOnlyMaliciousCheck(ActivityOnlyStartup.class));
+        assertFalse(GoogleNetworkCompat.isActivityOnlyMaliciousCheck(StartupWithBroadcastMaliciousCheck.class));
+        assertFalse(GoogleNetworkCompat.isActivityOnlyMaliciousCheck(StartupChangedSignature.class));
+        assertFalse(GoogleNetworkCompat.isActivityOnlyMaliciousCheck(StartupWithoutMaliciousCheck.class));
+        assertFalse(GoogleNetworkCompat.isActivityOnlyMaliciousCheck(null));
+    }
 }

@@ -58,6 +58,45 @@ public final class GoogleNetworkCompat {
         }
     }
 
+    /**
+     * PJZ110 16.0.3.502 (issue #5) has no OplusHansConnectivityManager at all, and its
+     * OplusHansManager has no weak-signal scene (ColorOS 17 declares STRICT_MODE_SCENE_WEAK_SIGNAL
+     * there). Only that combination says the restriction is absent rather than moved.
+     */
+    public static boolean isHansWithoutWeakSignal(Class<?> hansManager) {
+        if (hansManager == null) return false;
+        for (Method method : hansManager.getDeclaredMethods()) {
+            if (method.getName().toLowerCase(Locale.ROOT).contains("weak")) return false;
+        }
+        for (Field field : hansManager.getDeclaredFields()) {
+            if (field.getName().toLowerCase(Locale.ROOT).contains("weak")) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Without MaliciousRestrictPolicy, PJZ110 16.0.3.502 checks the malicious component list only
+     * in OplusAppStartupManager.preventByMaliciousCompStartegy(int,int,String,String), called from
+     * shouldPreventStartActivity alone: activities, not broadcasts or services. Require that
+     * method and no other malicious member besides dump, so a moved broadcast/service check stays a failure.
+     */
+    public static boolean isActivityOnlyMaliciousCheck(Class<?> startupManager) {
+        if (startupManager == null) return false;
+        boolean activityCheck = false;
+        for (Method method : startupManager.getDeclaredMethods()) {
+            String name = method.getName();
+            // dumpMaliciousConfig(PrintWriter) only prints the list for dumpsys.
+            if (!name.toLowerCase(Locale.ROOT).contains("malicious") || name.startsWith("dump")) continue;
+            if (!"preventByMaliciousCompStartegy".equals(name) || method.getReturnType() != boolean.class
+                    || !Arrays.equals(method.getParameterTypes(),
+                            new Class<?>[]{int.class, int.class, String.class, String.class})) {
+                return false;
+            }
+            activityCheck = true;
+        }
+        return activityCheck;
+    }
+
     private static boolean isNetworkRestrictionMember(String name) {
         String lower = name.toLowerCase(Locale.ROOT);
         return lower.contains("weak") || lower.contains("firewall");

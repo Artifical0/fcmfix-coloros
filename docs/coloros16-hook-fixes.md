@@ -79,3 +79,34 @@ ColorOS 16 没有 `ControllerCenter.addPkgWhiteArray/addUidWhiteArray`。
 4. 如某机型仍失配，保留实际异常、方法签名及完整系统版本；未知变体不会被静默当作“不适用”。
 
 本轮完成的是上述固件对照、源码修复和构建验证；真我 GT7 Pro 的装机与深睡测试结果仍待补充。
+
+## 一加 13 `PJZ110_16.0.3.502(CN01)`
+
+2026-10-14，对照 [issue #5](https://github.com/Artifical0/fcmfix-coloros/issues/5) 反馈者上传的
+`/system/framework/oplus-services.jar`（该机型 `system_ext` 中没有此文件）核对。13.1-rc1 上仍有 3 项失配，
+都是整个类不存在：
+
+| 文件 | SHA-256 |
+| --- | --- |
+| `classes.dex` | `50b0ace9b517eefdc4f525f7509bc8efd6054b16ee9765d59269b1d6b53e405b` |
+| `classes2.dex` | `08791db011ddf774661816c3f871adca346e8b86ea560cb8a491b576c2f4e84c` |
+
+### 可疑组件拦截（广播、服务两项）
+
+没有 `MaliciousRestrictPolicy`。可疑组件名单只在
+`OplusAppStartupManager.preventByMaliciousCompStartegy(int,int,String,String): boolean` 中检查，
+全部两个 DEX 里唯一的调用方是 `shouldPreventStartActivity`：只拦截 Activity 启动，不拦截广播和服务，
+FCM 送达不受影响。
+
+`MaliciousRestrictPolicy` 不存在、且 `OplusAppStartupManager` 中名字含 malicious 的方法只有这一个
+（`dumpMaliciousConfig` 除外）并且签名一致时，两项记为“不适用”；出现别的 malicious 方法或签名变化仍报告失配。
+
+### 弱信号联网白名单
+
+没有 `OplusHansConnectivityManager`，两个 DEX 中也没有任何弱信号成员（ColorOS 17 在 `OplusHansManager`
+里有 `STRICT_MODE_SCENE_WEAK_SIGNAL` 等）。类不存在、且 `OplusHansManager` 中没有名字含 weak 的方法或字段时，
+记为“不适用”。
+
+### 其余
+
+13.1-rc1 起 Osense `requestSceneAction` 和电池 `OAppNetControlManager.networkDisableWhiteList` 在该机型上已生效。
