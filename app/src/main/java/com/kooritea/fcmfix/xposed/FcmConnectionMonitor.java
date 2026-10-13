@@ -14,11 +14,13 @@ import android.system.Os;
 import android.system.OsConstants;
 import android.system.StructTimeval;
 
+import com.kooritea.fcmfix.util.FcmSockets;
 import com.kooritea.fcmfix.util.InetDiag;
 import com.kooritea.fcmfix.util.LogRing;
 import com.kooritea.fcmfix.util.SelfCheck;
 
 import java.io.FileDescriptor;
+import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.time.Instant;
@@ -26,10 +28,12 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
- * Watches GMS's FCM socket (port 5228-5230) from system_server through sock_diag, and keeps a
+ * Watches GMS's FCM socket (port 5228-5230, or 443 to mtalk) from system_server through sock_diag, and keeps a
  * short timeline of what usually explains a drop: screen, deep Doze, network changes, pushes.
  * A socket replaced by a new one between two samples is a reconnect; a sample that finds none
  * after one was up starts an outage, which ends at the first sample that finds one again.
@@ -43,6 +47,8 @@ final class FcmConnectionMonitor {
     private static final long QUICK_RECONNECT_MS = 150_000;
     private static final LogRing EVENTS = new LogRing(300);
     private static final LogRing PUSHES = new LogRing(150);
+    private static final String MTALK_HOST = "mtalk.google.com";
+    private static final long MTALK_RESOLVE_INTERVAL_MS = 10 * 60_000;
 
     private static Handler handler;
     private static int gmsUid = -1;
@@ -57,6 +63,9 @@ final class FcmConnectionMonitor {
     private static int outages;
     private static long longestOutage;
     private static long startedAt;
+    /** Addresses known to be mtalk: seen on 5228-5230, or resolved from MTALK_HOST. */
+    private static final Set<String> mtalkAddresses = new HashSet<>();
+    private static long mtalkResolvedAt;
 
     private FcmConnectionMonitor() {
     }
@@ -176,16 +185,15 @@ final class FcmConnectionMonitor {
             state = SelfCheck.UNKNOWN;
             return;
         }
-        InetDiag.Socket established = null;
-        InetDiag.Socket connecting = null;
-        for (InetDiag.Socket socket : sockets) {
-            if (socket.uid != gmsUid || socket.remotePort < 5228 || socket.remotePort > 5230) continue;
-            // While GMS reconnects two sockets may coexist; keep following the current one.
-            if (socket.state == InetDiag.TCP_ESTABLISHED
-                    && (established == null || socket.key().equals(connectionKey))) established = socket;
-            else if (socket.state == InetDiag.TCP_SYN_SENT && connecting == null) connecting = socket;
-        }
+        FcmSockets.Pick pick = FcmSockets.pick(sockets, gmsUid, connectionKey, mtalkAddresses);
+        InetDiag.Socket established = pick.established;
+        InetDiag.Socket connecting = pick.connecting;
         long now = System.currentTimeMillis();
+        if (pick.unknownFallback && now - mtalkResolvedAt > MTALK_RESOLVE_INTERVAL_MS) {
+            // Never resolve on the caller's thread: the self-check may sample from a system_server looper.
+            mtalkResolvedAt = now;
+            handler.post(FcmConnectionMonitor::resolveMtalk);
+        }
         String key = established == null ? null : established.key();
         if (key != null && !key.equals(connectionKey)) {
             String address = established.remote.getHostAddress() + ":" + established.remotePort;
@@ -219,6 +227,21 @@ final class FcmConnectionMonitor {
             remote = connecting == null ? null
                     : connecting.remote.getHostAddress() + ":" + connecting.remotePort;
         }
+    }
+
+    /** Learns mtalk's addresses for GMS's 443 fallback, then samples again. */
+    private static void resolveMtalk() {
+        List<String> addresses = new ArrayList<>();
+        try {
+            for (InetAddress address : InetAddress.getAllByName(MTALK_HOST)) addresses.add(address.getHostAddress());
+        } catch (Throwable e) {
+            XposedModule.logOnce("FCM monitor: cannot resolve " + MTALK_HOST + ": " + e);
+            return;
+        }
+        synchronized (FcmConnectionMonitor.class) {
+            if (!mtalkAddresses.addAll(addresses)) return;
+        }
+        sample();
     }
 
     static synchronized int state() {

@@ -184,8 +184,9 @@ public final class SelfCheck {
                     "一直停在这里，通常是 5228 端口被封或代理不通");
         }
         if (state == FCM_NONE) {
-            return new Verdict(Level.WARN, "GMS 当前没有连接 FCM 服务器（5228–5230 端口）" + down + "\n" + history,
-                    "刚亮屏或刚切换网络时可能正在重连，稍后再查；一直如此通常是网络问题。少数网络下 GMS 改走 443 端口，以实际收到推送为准");
+            return new Verdict(Level.WARN, "GMS 当前没有连接 FCM 服务器（5228–5230 端口，或 443 端口的 mtalk.google.com）"
+                            + down + "\n" + history,
+                    "刚亮屏或刚切换网络时可能正在重连，稍后再查；一直如此通常是网络问题。经代理走 443 端口时可能识别不到，以实际收到推送为准");
         }
         return new Verdict(Level.UNKNOWN, "无法检测", null);
     }
