@@ -25,24 +25,30 @@ jobs:
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
       - run: chmod +x gradlew
       - run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:lintRelease :app:assembleRelease
-      - name: Sign APK
-        uses: r0adkll/sign-android-release@349ebdef58775b1e0d8099458af0816dc79b6407 # v1
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.SIGNINGKEYBASE64 }}
-          alias: ${{ secrets.ALIAS }}
-          keyStorePassword: ${{ secrets.KEYSTOREPASSWORD }}
-          keyPassword: ${{ secrets.KEYPASSWORD }}
-        env:
-          BUILD_TOOLS_VERSION: '35.0.0'
-      - name: Verify and hash
+      - name: Sign, verify and hash
         shell: bash
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.SIGNINGKEYBASE64 }}
+          KEY_ALIAS: ${{ secrets.ALIAS }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTOREPASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEYPASSWORD }}
         run: |
+          set -euo pipefail
+          for v in SIGNING_KEY_BASE64 KEY_ALIAS KEYSTORE_PASSWORD KEY_PASSWORD; do
+            [ -n "${!v:-}" ] || { echo "::error::missing signing secret $v"; exit 1; }
+          done
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
           cd app/build/outputs/apk/release
-          mv app-release-unsigned-signed.apk "fcmfix-coloros-$VERSION_NAME.apk"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "fcmfix-coloros-$VERSION_NAME.apk"
-          sha256sum "fcmfix-coloros-$VERSION_NAME.apk" > SHA256SUMS
-      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+          APK="fcmfix-coloros-$VERSION_NAME.apk"
+          echo "$SIGNING_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          trap 'rm -f "$RUNNER_TEMP/release.jks"' EXIT
+          "$BT/zipalign" -f -p 4 app-release-unsigned.apk "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/release.jks" \
+            --ks-pass env:KEYSTORE_PASSWORD --ks-key-alias "$KEY_ALIAS" \
+            --key-pass env:KEY_PASSWORD --out "$APK" "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" verify --print-certs "$APK"
+          sha256sum "$APK" > SHA256SUMS
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ github.ref_name }}
           name: FCMFix ColorOS (${{ env.VERSION_NAME }})
