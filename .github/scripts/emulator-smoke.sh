@@ -11,13 +11,30 @@ mkdir -p "$OUT"
 
 shot() { adb exec-out screencap -p > "$OUT/$1.png"; }
 
+# Taps the node whose text or content-desc is $1, scrolling down when a lazy list has not
+# composed it yet.
 tap() {
-  adb shell uiautomator dump /sdcard/ui.xml > /dev/null
-  adb pull /sdcard/ui.xml "$OUT/ui-$1.xml" > /dev/null
-  local point
-  point=$(python3 "$HERE/ui_tap.py" "$OUT/ui-$1.xml" "$1")
-  adb shell input tap $point
-  sleep 2
+  local point attempt
+  for attempt in 1 2 3 4 5; do
+    adb shell uiautomator dump /sdcard/ui.xml > /dev/null
+    adb pull /sdcard/ui.xml "$OUT/ui-$1.xml" > /dev/null
+    if point=$(python3 "$HERE/ui_tap.py" "$OUT/ui-$1.xml" "$1" 2> /dev/null); then
+      adb shell input tap $point
+      sleep 2
+      return
+    fi
+    swipe_up
+  done
+  echo "::error::not on screen: $1"
+  exit 1
+}
+
+swipe_up() {
+  local size w h
+  size=$(adb shell wm size | sed -n 's/.*: \([0-9]*\)x\([0-9]*\).*/\1 \2/p' | tail -1)
+  read -r w h <<< "$size"
+  adb shell input swipe $((w / 2)) $((h * 7 / 10)) $((w / 2)) $((h * 3 / 10)) 300
+  sleep 1
 }
 
 check() {
@@ -43,7 +60,8 @@ tap 应用; sleep 2; shot 04_apps; check apps
 tap 搜索
 adb shell input text com.android.settings
 sleep 2; shot 05_search
-tap com.android.settings; sleep 2; shot 06_app_detail; check detail
+# The search field holds the package name too; tap the result by its label.
+tap Settings; sleep 2; shot 06_app_detail; check detail
 adb shell input keyevent KEYCODE_BACK; sleep 1
 adb shell input keyevent KEYCODE_BACK; sleep 1
 
