@@ -1,20 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#4338CA</color>
-    <color name="colorPrimaryDark">#1E1B4B</color>
-    <color name="colorAccent">#06B6D4</color>
-    <color name="screenBackground">#F5F7FB</color>
-    <color name="surface">#FFFFFF</color>
-    <color name="textPrimary">#172033</color>
-    <color name="textSecondary">#64748B</color>
-    <color name="fcmBadgeBackground">#E0F2FE</color>
-    <color name="fcmBadgeText">#0369A1</color>
-    <color name="statusOk">#15803D</color>
-    <color name="statusWarning">#B45309</color>
-    <color name="statusFail">#B91C1C</color>
-    <color name="textAccent">#4338CA</color>
-    <color name="surfacePressed">#EEF2FF</color>
-    <color name="statusCardBackground">#F1F5F9</color>
-    <color name="hintBackground">#FFF7ED</color>
-    <color name="divider">#E8ECF3</color>
+    <color name="screenBackground">#F1F4F9</color>
 </resources>

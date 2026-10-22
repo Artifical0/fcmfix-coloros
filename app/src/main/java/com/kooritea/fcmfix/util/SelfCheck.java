@@ -150,7 +150,7 @@ public final class SelfCheck {
     public static Verdict appNotify(int notify, int blockedChannels, boolean auto) {
         if (notify == 0 && auto) {
             return new Verdict(Level.INFO, "通知已关闭",
-                    "自动放行的应用，需要它的推送时在系统设置中打开通知；不需要可在主界面取消勾选");
+                    "自动放行的应用，需要它的推送时在系统设置中打开通知；不需要可在“应用”页关闭放行");
         }
         if (notify == 0) return new Verdict(Level.FAIL, "通知已关闭", "在系统设置中打开该应用的通知");
         if (notify < 0) return new Verdict(Level.UNKNOWN, "通知状态未知", null);

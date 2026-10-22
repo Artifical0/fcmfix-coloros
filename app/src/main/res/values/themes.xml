@@ -1,0 +1,6 @@
+<resources>
+    <!-- Compose draws everything; the window only needs a background for the first frame. -->
+    <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/screenBackground</item>
+    </style>
+</resources>
