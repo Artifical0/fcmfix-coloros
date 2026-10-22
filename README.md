@@ -7,7 +7,7 @@ GMS 和应用之间。本模块解除这一段的限制，并阻止 ColorOS 切�
 
 | | |
 | --- | --- |
-| 当前版本 | [13.0](https://github.com/Artifical0/fcmfix-coloros/releases/latest)（GitHub Release 与 LSPosed 模块仓库同步） |
+| 当前版本 | [13.2](https://github.com/Artifical0/fcmfix-coloros/releases/latest)（GitHub Release 与 LSPosed 模块仓库同步） |
 | 支持系统 | ColorOS 16、ColorOS 17（Android 16 / 17）国行 |
 | 验证机型 | 一加 15（PLK110）；其他 ColorOS 16/17 机型可能可用，但未经同等级验证 |
 | 作用域 | `系统框架` + `电池`（`com.oplus.battery`），两者都要勾选 |
