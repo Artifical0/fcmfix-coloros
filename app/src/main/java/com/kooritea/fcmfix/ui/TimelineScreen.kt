@@ -180,6 +180,7 @@ private fun EventItem(row: Row, index: Int, count: Int) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             softWrap = false,
         )
+        Spacer(Modifier.width(8.dp))
         Box(Modifier.padding(top = 6.dp).size(8.dp).clip(CircleShape).background(color))
         Spacer(Modifier.width(12.dp))
         Text(row.detail, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = textColor)
