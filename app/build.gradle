@@ -16,7 +16,10 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            // LSPosed loads the whole dex into system_server and Battery. R8 drops the unused
+            // parts of the libraries; proguard-rules.pro keeps the hook side exactly as written.
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
