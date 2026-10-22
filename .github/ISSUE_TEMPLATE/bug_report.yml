@@ -35,7 +35,7 @@ body:
     id: hooks
     attributes:
       label: 自查结果 / Hook 状态
-      description: 13.0 起点击 FCMFix 顶部的状态卡片进入自查，点“复制结果”粘贴到这里；旧版本点击界面顶部的 Hook 状态，选“复制”
+      description: 13.2 起在 FCMFix“状态”页底部点“复制结果”，粘贴到这里（13.0–13.1 点顶部的状态卡片进入自查后复制）
       render: text
   - type: dropdown
     id: fcm

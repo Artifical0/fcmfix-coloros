@@ -45,13 +45,24 @@
 
 不要删除失败的测试或关闭 lint 来规避问题，也不新增 lint baseline。
 
+Hook 部分（`XposedMain`、`xposed`、`util`、`libxposed`）用 Java，运行在 system_server 和电池进程中；
+应用界面用 Kotlin + Jetpack Compose（Material 3），在 `ui` 包中。Release 用 R8 压缩，`proguard-rules.pro`
+保留 Hook 部分的全部类和成员，不改名、不删除，只压缩界面和依赖库。
+
+界面测试分两种：
+
+- `UiSmokeTest`：Robolectric（legacy 图形模式）组合每个页面并点击主要操作，随 `testDebugUnitTest` 在任何机器上运行；
+- `screenshots/ScreenshotTest`：把每个页面渲染成 PNG，需要 Robolectric 原生图形（x86_64 Linux 或 macOS），
+  只在加 `-Pscreenshots` 时运行，输出到 `app/build/outputs/roborazzi/`。CI 的 `screenshots` 任务会上传这些截图；
+  `emulator` 任务把 Release 包装到模拟器上逐页打开并截图（`.github/scripts/emulator-smoke.sh`），应用崩溃时失败。
+
 Hook 尽量挂在 Binder 入口、跨 jar 调用的服务方法或体积较大的方法上：同一 dex 内被调用的短方法（getter、私有小方法）
 可能被 ART 内联，Hook 不会触发。
 
 ## 发布
 
 - 普通 master push / PR：检查 `docs/releases/<versionName>.md` 是否存在，JUnit、lintDebug、lintRelease、Debug/Release 构建，
-  无签名步骤。改 versionName 时同一提交里写好发布说明，CI 才会通过。
+  无签名步骤；另有截图和模拟器两个任务（可在 Actions 中手动运行任意分支）。改 versionName 时同一提交里写好发布说明，CI 才会通过。
 - 版本号从 13.0 起为 `主版本.修订`，测试版加 `-rcN`，例如 `13.0-rc5`、`13.0`、`13.1`。
   此前的版本号形如 `53-coloros-12.1`，其中 53 是上游 fcmfix 的版本；旧 tag 保持不变。
 - 推送 `v*` tag 触发正式发布：校验 tag 等于 `v` + `versionName`（如 `v13.0-rc5`），测试和 lint 通过后签名、校验签名、
