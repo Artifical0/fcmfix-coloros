@@ -2,6 +2,10 @@ name: Tagged release
 on:
   push:
     tags: ['v*']
+# 和 android.yml 同组：同一提交上推送 master 触发的那次还在跑就取消，发版只构建一次。
+concurrency:
+  group: build-${{ github.sha }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

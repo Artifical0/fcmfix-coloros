@@ -2,8 +2,18 @@ name: Android CI
 on:
   push:
     branches: [master]
+    # 只改文档时不跑（PR 不加过滤，免得等不到检查结果）。
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE*"
+      - ".github/ISSUE_TEMPLATE/**"
   pull_request:
   workflow_dispatch:
+# 和 release.yml 同组：打 tag 发版时那次构建会取消同一提交上还在跑的这次，避免重复构建。
+concurrency:
+  group: build-${{ github.sha }}
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
