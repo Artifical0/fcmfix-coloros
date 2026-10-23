@@ -18,12 +18,12 @@ LSPosed 作用域请**同时勾选“系统框架”和“电池（`com.oplus.ba
 
 ## 问题报告
 
-[`collect-report.sh`](https://github.com/Artifical0/fcmfix-coloros/blob/master/scripts/collect-report.sh) 新增两栏：
+[`collect-report.sh`](https://github.com/ByteJuno/fcmfix-coloros/blob/master/scripts/collect-report.sh) 新增两栏：
 
 - **Doze 白名单**：GMS / GSF 是否在白名单中；
 - **睡眠待机优化**：深度睡眠断网开关，以及最近的深度睡眠断网 / 恢复记录，可与 FCM 断开时间对照。
 
-解读见[如何提交问题与日志](https://github.com/Artifical0/fcmfix-coloros/blob/master/docs/report-issue.md#报告怎么看)。
+解读见[如何提交问题与日志](https://github.com/ByteJuno/fcmfix-coloros/blob/master/docs/report-issue.md#报告怎么看)。
 
 ## 测试重点
 

@@ -1,6 +1,6 @@
 # 如何提交问题与日志
 
-收不到推送时，请按下面的步骤收集信息，然后[提交 Issue](https://github.com/Artifical0/fcmfix-coloros/issues/new/choose)。
+收不到推送时，请按下面的步骤收集信息，然后[提交 Issue](https://github.com/ByteJuno/fcmfix-coloros/issues/new/choose)。
 FCMFix 的日志写在系统 logcat 中，标签为 `fcmfix`，不在 LSPosed 管理器的“模块日志”页面里，需要用下面的脚本导出。
 
 ## 1. 先自查

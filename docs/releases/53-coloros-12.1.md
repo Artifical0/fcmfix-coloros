@@ -20,11 +20,11 @@ LSPosed 作用域请**同时勾选“系统框架”和“电池（`com.oplus.ba
 - Google 受限广播：在系统框架广播入口清除 `restrict_enable=true`，GMS 闹钟不降级、不进入 RARE 待机分组。
 - Doze 白名单：同时在 `getNewWhiteList` 和 `whiteListChangedHandle` 补入 GMS / GSF / Play 商店。
 
-详见 [53-coloros-12 发布说明](https://github.com/Artifical0/fcmfix-coloros/releases/tag/53-coloros-12)。
+详见 [53-coloros-12 发布说明](https://github.com/ByteJuno/fcmfix-coloros/releases/tag/53-coloros-12)。
 
 ## 说明
 
 - 在 ColorOS 17 国行上，流量管理的联网策略里 Google 应用可能仍显示为禁止联网，但实际不会断网；以 FCM Diagnostics 和日志为准。
   修改版流量管理中把 Google 应用设为禁网同样不会生效。
 - FCMFix 不能让 GMS 连上 FCM 服务器，DNS 污染或端口封锁需要自行解决。判断方法见
-  [如何提交问题与日志](https://github.com/Artifical0/fcmfix-coloros/blob/master/docs/report-issue.md)。
+  [如何提交问题与日志](https://github.com/ByteJuno/fcmfix-coloros/blob/master/docs/report-issue.md)。

@@ -25,7 +25,7 @@ LSPosed 作用域请**同时勾选“系统框架”和“电池（`com.oplus.ba
 - FCMFix 界面顶部新增 Hook 状态（Android 14 及以上），点击可查看明细并复制；模块状态显示实际使用的 API 101。
 - 移除不会在 ColorOS 上生效的 MIUI / HyperOS 适配和需要 GMS 作用域的旧重连功能。
 - 系统框架中的 ColorOS Hook 按功能拆分；更新界面依赖库和构建工具。
-- [`collect-report.sh`](https://github.com/Artifical0/fcmfix-coloros/blob/master/scripts/collect-report.sh) 新增 Doze 白名单和睡眠待机优化两栏。
+- [`collect-report.sh`](https://github.com/ByteJuno/fcmfix-coloros/blob/master/scripts/collect-report.sh) 新增 Doze 白名单和睡眠待机优化两栏。
 
 ## 测试重点
 

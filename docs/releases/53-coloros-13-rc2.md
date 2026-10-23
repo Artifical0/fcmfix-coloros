@@ -27,7 +27,7 @@ FCMFix 界面顶部新增一行 Hook 状态，显示系统框架和电池中各�
 - 移除不会在 ColorOS 上生效的 MIUI / HyperOS 适配和需要 GMS 作用域的旧重连功能；诊断日志不再逐条向 GMS 发送广播。
 - 系统框架中的 ColorOS Hook 按功能拆分，Hook 逻辑本身未改动。
 - “目标无响应时代发提示通知”发送前先检查通知权限；更新界面依赖库和构建工具。
-- [`collect-report.sh`](https://github.com/Artifical0/fcmfix-coloros/blob/master/scripts/collect-report.sh) 新增 Doze 白名单和睡眠待机优化两栏。
+- [`collect-report.sh`](https://github.com/ByteJuno/fcmfix-coloros/blob/master/scripts/collect-report.sh) 新增 Doze 白名单和睡眠待机优化两栏。
 
 ## 测试重点
 

@@ -7,7 +7,7 @@ GMS 和应用之间。本模块解除这一段的限制，并阻止 ColorOS 切�
 
 | | |
 | --- | --- |
-| 当前版本 | [13.2](https://github.com/Artifical0/fcmfix-coloros/releases/latest)（GitHub Release 与 LSPosed 模块仓库同步） |
+| 当前版本 | [13.2](https://github.com/ByteJuno/fcmfix-coloros/releases/latest)（GitHub Release 与 LSPosed 模块仓库同步） |
 | 支持系统 | ColorOS 16、ColorOS 17（Android 16 / 17）国行 |
 | 验证机型 | 一加 15（PLK110）；其他 ColorOS 16/17 机型可能可用，但未经同等级验证 |
 | 作用域 | `系统框架` + `电池`（`com.oplus.battery`），两者都要勾选 |
@@ -20,7 +20,7 @@ GMS 和应用之间。本模块解除这一段的限制，并阻止 ColorOS 切�
 ## 安装
 
 1. 确认手机已 Root，并安装可正常工作的 LSPosed（libxposed API 100 及以上）。
-2. 安装 [Release](https://github.com/Artifical0/fcmfix-coloros/releases/latest) 中的 APK，或在 LSPosed 模块仓库中搜索 FCMFix ColorOS。
+2. 安装 [Release](https://github.com/ByteJuno/fcmfix-coloros/releases/latest) 中的 APK，或在 LSPosed 模块仓库中搜索 FCMFix ColorOS。
 3. 在 LSPosed 中启用模块，作用域**同时勾选**“系统框架”和“电池（`com.oplus.battery`）”。
 4. 重启手机。
 5. 打开 FCMFix，勾选确实需要 FCM 后台推送的应用，或开启“自动放行包含 FCM 的应用”，并确认这些应用的通知权限已开启。

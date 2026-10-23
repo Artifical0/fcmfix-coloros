@@ -21,12 +21,12 @@ LSPosed 作用域请**同时勾选“系统框架”和“电池（`com.oplus.ba
   新增 FCM 断开时“网络问题还是系统限制”的判断方法。
 - HyperOS `AutoStartManagerServiceStubImpl` 空指针防护。
 
-逐项核查与依据见 [ColorOS 17 Hook 核对](https://github.com/Artifical0/fcmfix-coloros/blob/master/docs/oneplus15-coloros17-fcm-analysis.md)。
+逐项核查与依据见 [ColorOS 17 Hook 核对](https://github.com/ByteJuno/fcmfix-coloros/blob/master/docs/oneplus15-coloros17-fcm-analysis.md)。
 感谢 @Tlipoca1337、@zopulus、@ligensuo711 的 fork 提供的思路，采纳与未采纳的原因见同一文档的“社区 fork 对照”。
 
 ## 说明
 
 - FCMFix 不能让 GMS 连上 FCM 服务器。国内 `mtalk.google.com` 解析常被污染，部分网络封锁 5228–5230 端口，
-  需要自行解决 DNS、hosts 或代理。判断方法见[如何提交问题与日志](https://github.com/Artifical0/fcmfix-coloros/blob/master/docs/report-issue.md)。
+  需要自行解决 DNS、hosts 或代理。判断方法见[如何提交问题与日志](https://github.com/ByteJuno/fcmfix-coloros/blob/master/docs/report-issue.md)。
 - 微信等受系统保护的 IM 应用平时走自己的长连接，FCM 日志中没有记录属正常；强行停止后再测试是否能被 FCM 唤醒。
 - ColorOS 16 `16.0.10.500` 经严格实机验证；ColorOS 17 `17.0.0.102(CN01)` 经固件静态核对，并在维护者的一加 15 上日常使用。

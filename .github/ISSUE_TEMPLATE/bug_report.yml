@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        提交前请先按 [如何提交问题与日志](https://github.com/Artifical0/fcmfix-coloros/blob/master/docs/report-issue.md) 自查，并用脚本导出报告。
+        提交前请先按 [如何提交问题与日志](https://github.com/ByteJuno/fcmfix-coloros/blob/master/docs/report-issue.md) 自查，并用脚本导出报告。
         FCM Diagnostics 亮屏也一直 disconnected 时，通常是网络问题（DNS 或端口），模块无法解决。
   - type: input
     id: device

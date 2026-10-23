@@ -8,7 +8,7 @@ LSPosed 作用域请**同时勾选“系统框架”和“电池（`com.oplus.ba
 ## ColorOS 17 适配
 
 按一加 15 国行全量包 `PLK110_17.0.0.102(CN01)` 逐项核对了全部 Hook 点，见
-[ColorOS 17 Hook 核对](https://github.com/Artifical0/fcmfix-coloros/blob/master/docs/oneplus15-coloros17-fcm-analysis.md)。
+[ColorOS 17 Hook 核对](https://github.com/ByteJuno/fcmfix-coloros/blob/master/docs/oneplus15-coloros17-fcm-analysis.md)。
 
 - **广播路径**：增加 Hook `broadcastIntentLockedTraced`，并对广播调用链去优化，
   避免 Android 17 编译内联导致 Hook 不触发。
@@ -23,9 +23,9 @@ LSPosed 作用域请**同时勾选“系统框架”和“电池（`com.oplus.ba
 ## 其他
 
 - 系统框架启动日志记录系统版本，便于对照固件定位问题。
-- 新增[问题报告说明](https://github.com/Artifical0/fcmfix-coloros/blob/master/docs/report-issue.md)与日志收集脚本
+- 新增[问题报告说明](https://github.com/ByteJuno/fcmfix-coloros/blob/master/docs/report-issue.md)与日志收集脚本
   `scripts/collect-report.sh`，以及 GitHub Issue 表单。
-- 源码仓库更名为 [Artifical0/fcmfix-coloros](https://github.com/Artifical0/fcmfix-coloros)，旧地址会自动跳转。
+- 源码仓库更名为 [ByteJuno/fcmfix-coloros](https://github.com/ByteJuno/fcmfix-coloros)，旧地址会自动跳转。
 - 包含 53-coloros-9-rc1 的安全加固与日志优化：核验 FCM 真实发送者，配置使用不可变快照，诊断日志限频。
 
 ## 说明

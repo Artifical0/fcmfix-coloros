@@ -1,6 +1,6 @@
 # ColorOS 16 Hook 兼容修复
 
-2026-10-12，对照 [issue #4](https://github.com/Artifical0/fcmfix-coloros/issues/4) 的三项失配，
+2026-10-12，对照 [issue #4](https://github.com/ByteJuno/fcmfix-coloros/issues/4) 的三项失配，
 使用本地一加 15 国行 `PLK110_16.0.10.500(CN01)` 全量固件（Android 16，SDK 36）核对。
 反馈机型为真我 GT7 Pro `RMX5010_16.0.10.500(CN01)`；该机型的完整固件及真机尚未验证。
 
@@ -82,7 +82,7 @@ ColorOS 16 没有 `ControllerCenter.addPkgWhiteArray/addUidWhiteArray`。
 
 ## 一加 13 `PJZ110_16.0.3.502(CN01)`
 
-2026-10-14，对照 [issue #5](https://github.com/Artifical0/fcmfix-coloros/issues/5) 反馈者上传的
+2026-10-14，对照 [issue #5](https://github.com/ByteJuno/fcmfix-coloros/issues/5) 反馈者上传的
 `/system/framework/oplus-services.jar`（该机型 `system_ext` 中没有此文件）核对。13.1-rc1 上仍有 3 项失配，
 都是整个类不存在：
 

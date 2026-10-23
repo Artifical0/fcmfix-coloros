@@ -26,7 +26,7 @@ LSPosed 作用域请**同时勾选“系统框架”和“电池（`com.oplus.ba
 - 电池组件中的原有拦截全部保留，作为第一层处理。
 - 问题报告说明新增 `ERR_CLOSE_BY_USER_UNLOCKED` 的含义与排查方法。
 
-逐项核查与依据见 [ColorOS 17 Hook 核对](https://github.com/Artifical0/fcmfix-coloros/blob/master/docs/oneplus15-coloros17-fcm-analysis.md)
+逐项核查与依据见 [ColorOS 17 Hook 核对](https://github.com/ByteJuno/fcmfix-coloros/blob/master/docs/oneplus15-coloros17-fcm-analysis.md)
 中的“解锁后 Google 禁网”和“全链路复核”两节。
 
 ## 说明
@@ -35,7 +35,7 @@ LSPosed 作用域请**同时勾选“系统框架”和“电池（`com.oplus.ba
   读到 4），但实际不会断网；以 FCM Diagnostics 是否 connected 和日志为准。修改版流量管理中把 Google 应用设为禁网同样不会生效。
 - 整机夜间断网（云控的夜间网络关闭）、“GMS 开关”关闭以及境外自动开关 GMS 属于用户或系统设置，模块不干预。
 - FCMFix 不能让 GMS 连上 FCM 服务器。国内 `mtalk.google.com` 解析常被污染，部分网络封锁 5228–5230 端口，
-  需要自行解决 DNS、hosts 或代理。判断方法见[如何提交问题与日志](https://github.com/Artifical0/fcmfix-coloros/blob/master/docs/report-issue.md)。
+  需要自行解决 DNS、hosts 或代理。判断方法见[如何提交问题与日志](https://github.com/ByteJuno/fcmfix-coloros/blob/master/docs/report-issue.md)。
 - 开机后日志应出现 `Oplus night network whitelist hook active`、`Oplus Google network firewall hook active`、
   `Oplus Google restrict broadcast hook active`、`Oplus deep-sleep GMS force-stop hook active` 和两条 `Oplus Doze whitelist hook active`。
 - ColorOS 17 `17.0.0.102(CN01)` 经固件静态核对，并在维护者的一加 15 上日常使用；本版新增的 Hook 未在 ColorOS 16 上重新实机验证，找不到对应方法时会自动跳过。

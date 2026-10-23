@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.dp
 import com.kooritea.fcmfix.R
 import com.kooritea.fcmfix.util.SelfCheck.Level
 
-private const val PROJECT_URL = "https://github.com/Artifical0/fcmfix-coloros"
+private const val PROJECT_URL = "https://github.com/ByteJuno/fcmfix-coloros"
 private const val REPORT_GUIDE_URL = "$PROJECT_URL/blob/master/docs/report-issue.md"
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -104,7 +104,7 @@ fun SettingsScreen(
                         supportingContent = { Text("基于上游 fcmfix 53。LSPosed 作用域：系统框架 + 电池") },
                     )
                     RowDivider()
-                    ActionRow(R.drawable.ic_code, "项目主页", "github.com/Artifical0/fcmfix-coloros", trailing = R.drawable.ic_open_in_new) {
+                    ActionRow(R.drawable.ic_code, "项目主页", "github.com/ByteJuno/fcmfix-coloros", trailing = R.drawable.ic_open_in_new) {
                         nav.openUrl(PROJECT_URL)
                     }
                     RowDivider()
