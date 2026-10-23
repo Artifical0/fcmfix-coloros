@@ -12,6 +12,7 @@ GMS 和应用之间。本模块解除这一段的限制，并阻止 ColorOS 切�
 | 验证机型 | 一加 15（PLK110）；其他 ColorOS 16/17 机型可能可用，但未经同等级验证 |
 | 作用域 | `系统框架` + `电池`（`com.oplus.battery`），两者都要勾选 |
 | 遇到问题 | [如何提交问题与日志](docs/report-issue.md) |
+| 更新通知 | Telegram 频道 [@ByteJuno](https://t.me/ByteJuno)：新版本发布、构建结果都会推送，欢迎关注 |
 
 基于上游 [kooritea/fcmfix](https://github.com/kooritea/fcmfix) 53 版，针对 ColorOS 国行做了专门适配和安全加固。
 13.0 起使用独立的版本号（此前形如 `53-coloros-12.1`）。
